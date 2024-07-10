@@ -114,25 +114,24 @@ class GPT2(nn.Module):
         # This way we set the pointers equal to eachother and we can share them - this is not the most efficient way as we can still not generate the wte embeddings initially
         self.transformer.wte.weight = self.lm_head.weight
 
-        # TODO Initialise our parameters - check if there is a better way to do this during the definition
-        # By using self.apply we are applying this self._initialise_weights function to every single module
+        # TODO check how these layers are alraedy initialised
         self.apply(self._initialise_weights)
 
     def _initialise_weights(self, module):
-        # TODO check if we have to do both separately - can combine it into one and check if its linear and module.bias is not None
-        # TODO This is the default implementation if we are following the GPT2 source code - 1/root(number of features) -update it so that it is dynamic
+        # TODO This is the default implementation if we are following the GPT2 source code - 1/root(number of features) - update it so that it is dynamic
         # TODO prevent the double initialisation of the linear and wte tensors
-        if isinstance(module, nn.Linear):
+        if isinstance(module, nn.Linear) or isinstance(module, nn.Embedding):
             std = 0.02
             if hasattr(module, "NANOGPT_SCALE_INIT"):
                 # Every block of the residual network keeps adding and the variance keeps updating - we want to remove this growth
                 # This can be done by updating the weights by 1/root(n) where n is the number of residual layers
                 std *= (2 * self.config.number_of_layers) ** -0.5
             torch.nn.init.normal_(module.weight, mean=0.0, std=std)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+            # If it is a linear layer that has bias then we can initialise them all to 0
+            if isinstance(module, nn.Linear):
+                if module.bias is not None:
+                    torch.nn.init.zeros_(module.bias)
 
     def forward(self, tokens, targets=None):
         # Tokens of shape (B, T)
@@ -369,9 +368,9 @@ if torch.cuda.is_available():
     device = "cuda"
 # torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
 
-model = GPT2.from_pretrained("gpt2")
+# model = GPT2.from_pretrained("gpt2")
 # Initialising with the default config
-# model = GPT2(GPTConfig())
+model = GPT2(GPTConfig())
 
 # During inference we have to make sure that we set the model to evaluation mode as BatchNorm and Dropout layers act different
 # model.eval()
