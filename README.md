@@ -11,6 +11,8 @@ This project follows the principle of iteratively implementing small building bl
 - Tokeniser
 - GPT3
 
+<hr>
+
 ### How to
 
 #### Loading the pretrained model weights
@@ -33,6 +35,8 @@ The original paper has quite conservative parameters especially warm up and lear
 
 How to use the evaluation methods
 
+<hr>
+
 ### Papers
 
 The following papers were read and used to match the GPT3 implementation to its true origin, understand the separate components and optimise the model
@@ -44,6 +48,8 @@ Flash attention & flash attention 2
 gpt 3 / 2
 
 cuda paper explaining bfloat16
+
+<hr>
 
 ### Changes & Optimisations
 
@@ -68,6 +74,8 @@ A lot of the following optimisations took advantage of kernel fusion, I found [t
 - torch.compile
 - Using FlashAttention which torch.compile
 
+<hr>
+
 ### Future ideas & Improvements
 
 Potential improvements includes:
@@ -80,6 +88,8 @@ Considerations for this improvement:
 - Logging would also have to take into account the number of GPUs processing especially in the tokens/second calculation.
 
 Once pre trained it would be quite interesting to further take the model through fine-tuning stages that would allow it to interact in a conversational manner and being able to use RLHF. [OpenAI guidance is here](https://platform.openai.com/docs/guides/fine-tuning)
+
+<hr>
 
 ### Example Outputs
 
@@ -105,6 +115,7 @@ Once pre trained it would be quite interesting to further take the model through
 
 #### Trained GPT Model
 
+<hr>
 
 ### Common Problems & Fixes
 
@@ -112,6 +123,7 @@ Making sure cuda is installed, you can use torch.cuda.is_available(). If false i
 - [Comprehensive StackOverflow Guide](https://stackoverflow.com/questions/60987997/why-torch-cuda-is-available-returns-false-even-after-installing-pytorch-with)
 - [Nvidia Cuda ToolKit Download](https://developer.nvidia.com/cuda-downloads)
 
+<hr>
 
 ### Credits
 
