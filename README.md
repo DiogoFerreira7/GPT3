@@ -4,13 +4,24 @@ Note: Check if there are any nice tips for read me / markdown to format it nicel
 
 This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation.
 
-The following was the order of the implementations:
-
-
+#### The following was the order of the implementations:
+- Bigram model
+- MLP
+- Transformer
+- Tokeniser
+- GPT3
 
 ### Papers
 
 The following papers were read and used to match the GPT3 implementation to its true origin, understand the separate components and optimise the model
+
+Attention is all you need
+
+Flash attention & flash attention 2
+
+gpt 3 / 2
+
+cuda paper explaining bfloat16
 
 ### Credits
 
