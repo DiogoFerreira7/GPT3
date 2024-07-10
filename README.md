@@ -29,6 +29,11 @@ Here is an awesome repository you can use if you want to train your own model on
 
 #### Training your own model
 
+Calculations
+Max steps
+
+
+
 The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
 
 #### Evaluating

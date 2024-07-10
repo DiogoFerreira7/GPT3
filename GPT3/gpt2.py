@@ -18,11 +18,6 @@ torch.set_float32_matmul_precision("high")
 
 # TODO read through his git read me at the bottom for issues
 
-# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader
-    # TODO find another pre training dataset to try
-    # if it can be done for most datasets so people just chagne the name of the datasets would be perfect
-    # add randomness
-
 # TODO make it different - add optional timing during inference for optimisation use time.time() and torch.cuda.synchronize() before the last one and check the difference
 
 # TODO Change everything that I think could maek it better, e.g naming - how things work, check with gpt for different ways to write the same code
@@ -37,9 +32,13 @@ torch.set_float32_matmul_precision("high")
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, this is important - makes it so model can be trained multiple days in a row and keep improving
 
-# TODO After model training upload it to huggingface, see if inference can be done on it?
-
 # TODO instead of using tiktoken try using own tokeniser
+
+# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader
+# streaming and using that loaded version to do training
+# add randomness
+
+# TODO After model training upload it to huggingface, see if inference can be done on it?
 
 # TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
     # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
@@ -174,28 +173,21 @@ class GPT2(nn.Module):
     # Make it so that the model does not have to be initialised to get a pretrained version
     @classmethod
     def from_pretrained(cls, model_type):
-        # TODO update this so that it just loads gpt2 model without hte need for any other values 
-        # write comments that allow people to change the model that they load
-        """Loads pretrained GPT-2 model weights from huggingface"""
-        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
-    
-        # TODO Add better messages at different points and change them, output some key information
-        print("loading weights from pretrained gpt: %s" % model_type)
+        print("Loading pretrained weights...")
 
-        # Updating the hyper parameters to match the GPT Model that we match
-        config_args = {
-            'gpt2':         dict(number_of_layers=12, number_of_heads=12, number_of_embeddings=768),  # 124M params
-            # 'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
-            # 'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
-            # 'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-        }[model_type]
-        
+        # TODO update this so that it just loads the GPT3 model
+        configuration = {
+            "number_of_layers": 12, 
+            "number_of_heads": 12, 
+            "number_of_embeddings": 768,
+            # Below are constant for all models
+            "vocabulary_size": 50257,
+            "block_size": 1024
+            }
 
-        config_args['vocabulary_size'] = 50257 # always 50257 for GPT model checkpoints
-        config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
 
         # Initialise our GPT model
-        config = GPTConfig(**config_args)
+        config = GPTConfig(**configuration)
         model = GPT2(config)
         sd = model.state_dict()
         sd_keys = sd.keys()
@@ -291,7 +283,6 @@ class MLP(nn.Module):
         transformer.h.0.mlp.c_proj.bias torch.Size([768])
         """
 
-        #
         self.c_fc = nn.Linear(config.number_of_embeddings, 4 * config.number_of_embeddings)
         # There are two versions the original and the approximate, RELU without a flat tail at 0
         # Gaussian Error Linear Units
@@ -352,8 +343,6 @@ class CausalSelfAttention(nn.Module):
         # 3 methods - another one is by using lower triangular matrix and them summing across dim = 1
 
         # Flash Attention - the is_causal parameter removes our need to implement the masked_fill method
-        # TODO warning about torch not compiled with flash attention - UserWarning: 1Torch was not compiled with flash attention
-        # TODO link flash attention paper and read through it quickly
         # Flash attention can have up to a 7.6x faster speedup on computation based on the flash attention paper
         # It actually has more FLOPS and has to have an algorithmic rewrite hence it is not found by torch.compile
         # Flash attention 2 has come out
@@ -380,23 +369,19 @@ if torch.cuda.is_available():
     device = "cuda"
 # torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
 
-# model = GPT2.from_pretrained("gpt2")
+model = GPT2.from_pretrained("gpt2")
 # Initialising with the default config
-model = GPT2(GPTConfig())
+# model = GPT2(GPTConfig())
 
 # During inference we have to make sure that we set the model to evaluation mode as BatchNorm and Dropout layers act different
 # model.eval()
 # Move every single tensors to cuda
 model.to(device)
 
-# There is no good reason to not use torch.compile in genereal, speed up is mainly from reducing python overhead and GPU read and writing
-# TODO check and update version to fix compile not working and calculate speed up 
+# There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
 # GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
 # that memory is all on a GPU which prevents round trips - this is called kernel fusion
 # model = torch.compile(model)
-
-# TODO check the codebase and see if he has fixed it
-# TORCH.COMPILE MAY AFFECT GENERATION AND HENCE EVALUATION E.G HellaSwag
 
 # Creating our dataloader to get batches
 class Dataloader:
@@ -416,11 +401,6 @@ class Dataloader:
         self.total_shards = len(self.shards)
         assert self.total_shards > 0, "no shards found"
         print(f"Retrieved {self.total_shards} shards")
-
-        # # TODO update this with the tokeniser implementation
-        # encoding = tiktoken.get_encoding("gpt2")
-        # with open("Pre Train Datasets/input.txt", "r") as dataset:
-        #     text = dataset.read()
         self.reset()
 
     def reset(self):
@@ -432,7 +412,6 @@ class Dataloader:
         self.position = 0
 
     def load_tokens(self, filename):
-        # TODO might be able to make this a class method if we still need it after
         npt = np.load(filename)
         ptt = torch.tensor(npt, dtype=torch.long)
         return ptt
@@ -467,9 +446,8 @@ import time
 
 # Nicest power of 2 closest to 0.5M (2^19)
 total_batch_size = 2048 # 524288 
-# TODO learn why its good to Use powers of 2 for batches
 B = 1
-# TODO GPT3 has 2048 instead
+# GPT3 has 2048 instead
 T = 1024
 mini_batch_size = B * T
 assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
@@ -484,23 +462,14 @@ validation_dataloader = Dataloader(B=B, T=T, split="val")
 # The decay time is less than the max steps time - it should train at 10% near the end
 # They use a cosine decay learning rate scheduler down to 10% of the original learning rate value and a warmup for the first tokens
 
-# TODO these are extremely conservative so they can be tuned much further - max lr can be much higher and warmup steps much lower
+# Aiming for 0.5M which is around 2^19 tokens per batch (we are using gradient accumulation of course), 
+# we want 10^9 - 10B total tokens processed which is what we have. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 max_steps = 19073
+# Gpt3 paper warms up over 375 million tokens, we have 0.5M per batch so we do this over 715 steps, 375e6 / 2^19 = 715 warm up steps
 # 715 matches exactly but this is quite mild and we can probably start far earlier since we are limited on compute
 warmup_steps = 715
-
-# Calculations
-# Max steps
-# We are aiming for 0.5M which is around 2^19 tokens per batch (we are using gradient accumulation of course)
-# We want 10^9 - 10B total tokens processed which is what we have
-# 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
-# Warmup steps 
-# TODO watch the watch later video for warm up and why its good
-# Gpt3 paper warms up over 375 million tokens
-# We have 0.5M per batch so we do this over 715 steps
-# 375e6 / 2^19 = 715 warm up steps
 
 def get_lr(step):
     if step < warmup_steps:
@@ -522,7 +491,8 @@ encoding = tiktoken.get_encoding("gpt2")
 # Fused by default is set to False to provide adequate bake in time as it is relatively new
 # Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 optimiser = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=0.1)
-# TODO Tidy up this code
+
+# TODO Tidy up this code - move each separate one into the class - maybe make a separate class that takes a model instead and lets you do sampling, evaluation, inference
 for step in range(max_steps):
 
     # Evaluate our model a certain amount of steps
@@ -621,6 +591,7 @@ for step in range(max_steps):
     for group in optimiser.param_groups:
         group['lr'] = lr
 
+    # TODO check if clipping slows it - we might be able to train quicker
     # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
     # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
     global_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
