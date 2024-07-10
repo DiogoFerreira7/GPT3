@@ -16,30 +16,14 @@ from math import sqrt, cos, pi
 # Note: Ampere / Turing architectures are required respectively
 torch.set_float32_matmul_precision("high")
 
-# TODO Make ReadMe
-# references for documentation and implementations
-# 1) the official GPT-2 TensorFlow implementation released by OpenAI:
-# https://github.com/openai/gpt-2/blob/master/src/model.py
-# 2) huggingface/transformers PyTorch implementation:
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
-# Add loading in pretrained model weights
-# Add gpt2 and gpt3 paper links here
-# tiktokenizer.vercel.app and examples of how the tokeniser works
-
-# Link to where you can get good Pre Training datasets  https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file
-# credit here https://stackoverflow.com/questions/60987997/why-torch-cuda-is-available-returns-false-even-after-installing-pytorch-with
-# add make sure cuda is installed torch.cuda.is_available() if not link to website - https://developer.nvidia.com/cuda-downloads
-
 # TODO read through his git read me at the bottom for issues
-
-# TODO instead of using tiktoken try using own tokeniser
 
 # TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader
     # TODO find another pre training dataset to try
     # if it can be done for most datasets so people just chagne the name of the datasets would be perfect
     # add randomness
 
-# TODO Enable pylint and fix any errors / warnings that I can to make the code more readable
+# TODO make it different - add optional timing during inference for optimisation use time.time() and torch.cuda.synchronize() before the last one and check the difference
 
 # TODO Change everything that I think could maek it better, e.g naming - how things work, check with gpt for different ways to write the same code
 
@@ -55,69 +39,34 @@ torch.set_float32_matmul_precision("high")
 
 # TODO After model training upload it to huggingface, see if inference can be done on it?
 
+# TODO instead of using tiktoken try using own tokeniser
+
 # TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
     # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
-
-# TODO check his more optimised implementation in another repo and even the .c one for ideas
 
 # TODO Try EleutherAI for implementing custom models
 # TODO https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/interface.md#external-library-usage
     # Put results within the readme after
     # Check his code implementation he used for HellaSwag
 
-# CHANGES - check that these were not already in the paper implementation
-# GPT2 used the approximation of GELU (tanh version) which only affected tensorflow
-# Applying layer normalisation prior instead of post and not affecting residual stream
-# Using own implementation of tokeniser
-# Following the weight sharing scheme mentioned in GPT2 and preventing the double initialisation of wte and ln as gpt initalises with std=0.02 and biases at 0s
-# TODO make it different - add optional timing during inference for optimisation use time.time() and torch.cuda.synchronize() before the last one and check the difference
-# Fixing ugly numbers that were not powers of two that made optimisation difficult
-# Using a cosine learning rate scheduler with warm up
-# Data sampled without replacement to reduce overfitting during training
-# Using SlimPajama / FineWeb-Edu for training https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1 sample-10BT / sample-100BT
+# TODO Enable pylint and fix any errors / warnings that I can to make the code more readable
 
-# List Optimisations
-# Deep learning can tolerate significantly lower precisions
-    # For example we can go from 19.5 TFLOPS to 312 using an A100 by switching from FP32 TO FP16
-    # It will also be far quicker and easier to move them around as there is a limited memory bandwidth
+# TODO check his more optimised implementation in another repo and even the .c one for ideas
 
-    # TF32 - TensorFloat-32 provides an 8x faster approximation - as long as you don't mind the loss in precisoin
-# AdamW fused kernel
-# Automatic mixed precision - Autocast guidance
-    # Autocast is a context manager / decorator that allows regions of the script to run in mixed precisoin
-    # It will run in a dtype chosen by autocast to improve performance and maintain accuracy
-    # can also include warning here about using float16 as it has reduced precision
-# Most of the compute in a transformer is the matrix multiplication, and especially the classifier layer at the top
-    # going from 768 to 50257
-# Using torch.compile
-    # Kernel fusion
-    # https://stackoverflow.com/questions/53305830/cuda-how-does-kernel-fusion-improve-performance-on-memory-bound-applications-on
-# There are operations that torch.compile will not find - FlashAttention allows you to do the attention operation much faster
-    # Kernel fusion operation
-    # The previously separate - matrix multiplication, scaling to stabilise learning (root block size), apply a mask, softmax, matrix multiplication
-    # softmax here is being used as a normalisation function 
-
-# Potential improvement includes DDP
-# Distributed data parallel
-# We can make our master / main process do the printing and logging information
-# We would also have to make sure that our gradient accumulation batch sizes are divisible by the ddp_world_size (the number of GPUs we have) as we dont want them processing the same data
-# We would also have to update our dataloader as we don't want any processes to get the same chunks of data, an easy way being we take in the rank of each process
-# Our new dataloader positon would have to now be mini_batch_size * number_of_gpus so that they are strided out
-# Our model would have to be passed into the DistributedDataParallel DDP(model) so that the weights can be shared and once the backward pass is over each GPU will take an average of gradients across all ranks
-# Loss and gradients would also have to be averaged across all processes so we could use torch.distributed methods for this
-# Logging would also have to take into account the number of GPUs processing especially in the tokens/second calculation
-
-# Decorator defines this class' primary purpose is for data storage / representation
 @dataclass
 class GPTConfig:
-    # TODO Parameters as used by the paper - if tuned keep original paper parameters commented
+    """
+    Original GPT3 Paper Configuration
     block_size: int = 1024
     # 50,000 BPE merges, 256 byte tokens + <|endofline|>
-    # By increasing our vocabulary size - they will be powers of 2 - this increases the number of FLOPs, we are however predicting tokens that do not exist
-    # 50,304 is the closest number that partitions well
-    # TODO figure out why this gives an improvement - nice numbers and cuda calculation chunks
-    # Calculations are done in chunks of 64 / 32, anything remaining will be processed after and this is very inefficient,
-    vocabulary_size: int = 50304 #50257
+    vocabulary_size: int = 50257
+    number_of_layers: int = 12
+    number_of_heads: int = 12
+    number_of_embeddings: int = 768
+    """
+    block_size: int = 1024
+    # Model becomes more efficient by using powers of 2
+    vocabulary_size: int = 50304
     number_of_layers: int = 12
     number_of_heads: int = 12
     number_of_embeddings: int = 768
@@ -171,7 +120,7 @@ class GPT2(nn.Module):
         self.apply(self._initialise_weights)
 
     def _initialise_weights(self, module):
-        # TODO check if we have to do both separately - can combine it into one and check if its linear and module.bias is not None¬¬
+        # TODO check if we have to do both separately - can combine it into one and check if its linear and module.bias is not None
         # TODO This is the default implementation if we are following the GPT2 source code - 1/root(number of features) -update it so that it is dynamic
         # TODO prevent the double initialisation of the linear and wte tensors
         if isinstance(module, nn.Linear):
@@ -685,24 +634,3 @@ for step in range(max_steps):
     # TODO when learning rate scheduler is added we can keep track of it
     # we can also add gradient accumulation step and epochs and the number of batches / accumulations per epoch
     print(f"Current loss - {loss_accumulation.item()} - time: {dt*1000} - processing: {tokens_per_second} tokens/second")
-
-
-# TODO update for GPT3 Weights - follow same steps of printing out the GPT3 model in the notebook and seeing what is part of it
-"""
-Pretrained GPT2 Weights
-Inference pipeline can be improved with the same weights the huggingface model perfomance is better - currently added the topk improvement
-
-I am a doctor, let me teach you about the importance of mental health and family care," said the speech. "When you are an older man with mental illness, the
-I am a doctor, let me teach you about medicine. So, where do I live? I live here in the same building that you're in, and then I send
-I am a doctor, let me teach you about what I taught you and what I taught you before," Dr. Burdick continued. "I knew my specialty." For
-I am a doctor, let me teach you about the brain."When I said "no", he turned to face me without looking me right into his eyes.
-
-Randomly initialised weights
-
-I am a doctor, let me teach you aboutVIS speaksposition Fund Pulitzer Recently astronautsumbnails tutorialFloat loneliness shift358 Woods calibr Doyleiven sedanzengroups licking Auschwitz mindful Tripoli 125
-I am a doctor, let me teach you about facilit debunk stating951 customizationLet indicatorlifting Jenn052 BAD ashamed antitTra scripting funny nihil Houth Marc Maiden vegetarian 33 Punjab manslaughter shipping
-I am a doctor, let me teach you aboutheet football Invention Congratulations Capitals transcriptsolding Railroadqua Steele HalSolution wee reboot Lebanon Panicersed testifiedARBinduced Getty Assets stretches relationships911
-I am a doctor, let me teach you about Conor acted=-=-=-=- exchanging scamsadier EngelsCar �dem carrying Puzzle productions439 brow trainthro insert Audio informingCentralruly chauscience 2000
-
-Trained GPT Model
-"""
