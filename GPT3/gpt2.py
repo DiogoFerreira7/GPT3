@@ -7,7 +7,8 @@ import os
 import tiktoken
 import numpy as np
 from transformers import GPT2LMHeadModel
-from math import sqrt, cos, pi
+
+import time
 
 # TODO read through his git read me at the bottom for issues
 
@@ -22,6 +23,8 @@ from math import sqrt, cos, pi
 # TODO check the hugging face / open ai implementations for ideas of how to organise things
 
 # TODO look for regularisation methods such as Dropout
+
+# TODO see if the model forward processing / loss calculation can be split (seems inefficient to do it this way)
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, this is important - makes it so model can be trained multiple days in a row and keep improving
 
@@ -407,9 +410,163 @@ class Dataloader:
         return x, targets
     
 class Trainer():
+    # TODO make it so parameters are easily configurable - most of them default that you dont have to pass in
+    # Try to make everything a parameter
+    # TODO add test for torch.compile, if on then prevent sampling
+    # TODO put all the asserts in the model init, add new ones too
 
-    def __init__(self):
-        pass
+    def __init__(self, model, optimiser, learning_rate_scheduler, device,
+                 max_steps, gradient_accumulation_steps,
+                 train_dataloader, evaluation_dataloader,
+                 sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=50, 
+                 gradient_clipping=True, max_norm=1.0):
+        self.model = model
+        self.optimiser = optimiser
+        self.learning_rate_scheduler = learning_rate_scheduler
+        self.device = device
+
+        # Loop
+        self.max_steps = max_steps
+        
+        # Training parameters
+        self.gradient_clipping = gradient_clipping
+        self.max_norm = max_norm
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        
+        # Dataloaders
+        self.train_dataloader = train_dataloader
+        self.evaluation_dataloader = evaluation_dataloader
+
+        # Sampling parameters
+        self.sampling_string = sampling_string
+        self.sequences_to_sample = sequences_to_sample
+        self.sampling_length = sampling_length
+
+        # Logging variables
+        self.loss = 0
+
+    def start(self):
+        # TODO Tidy up this code - move each separate one into the class - maybe make a separate class that takes a model instead and lets you do sampling, evaluation, inference
+        for step in range(self.max_steps):
+
+            # Evaluation
+            if step % 100 == 10:
+                self.evaluate()
+
+            # Sampling
+            if step % 100 == 10:
+                self.sample()
+
+            # Training
+            start_time = time.time()
+            self.train()
+            # Wait for the GPU to complete before timing
+            torch.cuda.synchronize()
+            end_time = time.time()
+
+            # Logging
+            time_taken = end_time - start_time
+            tokens_per_second = (train_dataloader.B * train_dataloader.T * gradient_accumulation_steps) / (time_taken)
+            # TODO add gradient accumulation step and epochs and the number of batches / accumulations per epoch - add the step value too out of total steps, calculate an estimate for how long it will take
+            print(f"Step {step}/{self.max_steps}, Loss: {self.loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second}")
+
+
+    def train(self):
+        self.model.train()
+        self.optimiser.zero_grad()
+        loss_accumulation = 0.0
+        for _ in range(self.gradient_accumulation_steps):
+            x, targets = self.train_dataloader.next_batch()
+            x, targets = x.to(self.device), targets.to(self.device)
+
+            # Automatic mixed precision - Autocast guidance
+            # Autocast is a context manager / decorator that allows regions of the script to run in mixed precision
+            # It will run in a dtype chosen by autocast to improve performance and maintain accuracy
+            # Autocast should only wrap the forward pass of the network including hte loss computation, no backward passes are recommended using autocast
+            # Warning: We do not want to use float16 otherwise we will need gradient scalars as they have a reduced range whilst bfloat16 has reduced precision
+            with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                # Mainly matrix multiplications are autocast to bfloat16
+                # LayerNorm, softmax, logs will remain in float32 as they are susceptible to more precision changes
+                _, loss = self.model(x, targets)
+
+            # TODO learn why gradient accumulation needs normalisation of this value
+            # TODO this can be taken out as it will be a constant factor applied to everything
+            # We need to make sure that we normalise the values and thus
+            loss = loss / self.gradient_accumulation_steps
+            # We need to detach the loss tensor, this is so that the tensor is not attached from the graph we just keep track of the values
+            loss_accumulation += loss.detach()
+            # Gradients will accumulate
+            loss.backward()
+
+        self.loss = loss_accumulation.item()
+
+        # TODO check if clipping slows it - we might be able to train quicker
+        # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
+        # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
+        if self.gradient_clipping:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), self.max_norm)
+        self.optimiser.step()
+
+        # Update our learning rate according to the scheduler
+        self.learning_rate_scheduler.step()
+
+    def evaluate(self):
+        model.eval()
+        self.evaluation_dataloader.reset()
+
+        with torch.no_grad():
+            validation_loss_accumulation = 0.0
+            validation_loss_steps = 20
+            for _ in range(validation_loss_steps):
+                x, targets = self.evaluation_dataloader.next_batch()
+                x, targets = x.to(device), targets.to(device)
+                with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                    _, loss = model(x, targets)
+                loss = loss / validation_loss_steps
+                validation_loss_accumulation += loss.detach()
+            
+        print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
+
+    def sample(self):
+        # While the size of the rows that we will keep appending tokens to is smaller than our limit length
+        model.eval()
+        
+        # Get our prefix tokens given a string
+        tokens = encoding.encode(self.sampling_string)
+        # Flatten out the tensor and repeat it number of sequences times
+        # TODO at the check check that Unsqueeze(0) shouldn't be needed here)
+        tokens = torch.tensor(tokens).unsqueeze(0).repeat(self.sequences_to_sample, 1)
+        x = tokens.to(device)
+        while x.size(1) < self.sampling_length:
+            # We do not want to cache any tensors, no need to prepare for .backward() which will be more efficient
+            with torch.no_grad():
+                logits, _ = model(x)
+                # Now we know each logit's position predicts the next position so if we want to generate a sentence we can 
+                # take the last logit in each batch sequence - remember each logit is still of size vocabulary_size
+                # TODO this implementation can be more efficient we are throwing away all other logits
+                logits = logits[:, -1, :]
+                # Now that we have the raw logits we take the softmax
+                # We want to softmax the final dimension of size vocabulary_size to then sample from that distribution of probabilities
+                probabilities = F.softmax(logits, dim = -1)
+                # TODO check how sampling in the open ai tensorflow implementation works
+                # This will clamp all other probabilities below 50 and thus it will keep the model within teh vicinity of likely tokens
+                # They will all be renormalised and probabilities updated
+                # topk_probabilities and the indices are all sorted in order by the topk function
+                topk_probabilities, topk_indices = torch.topk(probabilities, 50, dim=-1)
+                # After we get the top k highest probabilities we can sample from them
+                # we then sample a value from them based on their probabilities giving us a (B, 1) tensor
+                tokens = torch.multinomial(topk_probabilities, 1)
+                # We are taking the second dimension and picking out the indices of the tokens that were sampled
+                indices = torch.gather(topk_indices, -1, tokens)
+                # Concatenate the new token index for each sentence with the current sentences x that we have
+                # So we have a tensor of size [B, T] and [B, 1] to a [B, T+1]
+                x = torch.cat((x, indices), dim=1)
+                
+        # All layers and modules are pre initialised randomly
+        for i in range(self.sequences_to_sample):
+            tokens = x[i, :self.sampling_length].tolist()
+            decoded = encoding.decode(tokens)
+            print(decoded)
 
 # Device initialisation - the code will adapt to whatever device is being used
 # using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
@@ -443,7 +600,7 @@ model.to(device)
 # Then if we want the negative loss likelihood (cross entropy) we can do -ln(1/50257)
 # We want our loss to be roughly 10.8, in the model prior to pretraining it is 11.08
 
-import time
+
 # B = 16, T = 1024 is the default paper configuration
 # Try to maximise the batch size that will fit your GPU without giving you out of memory errors (use even numbers)
 # We want to get roughly a 0.5M batch size - so we can simulate a 0.5M batch size using gradient accummulation we just have to run for longer
@@ -458,9 +615,7 @@ assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divis
 # After this number of accumulation steps we can do one large update
 gradient_accumulation_steps = total_batch_size // (mini_batch_size)
 train_dataloader = Dataloader(B=B, T=T, split="train")
-validation_dataloader = Dataloader(B=B, T=T, split="val")
-
-# logits, loss = model(x, targets)
+evaluation_dataloader = Dataloader(B=B, T=T, split="val")
 
 encoding = tiktoken.get_encoding("gpt2")
 
@@ -472,7 +627,7 @@ min_learning_rate = max_learning_rate * 0.1
 max_steps = 19073
 # Gpt3 paper warms up over 375 million tokens, we have 0.5M per batch so we do this over 715 steps, 375e6 / 2^19 = 715 warm up steps
 # 715 matches exactly but this is quite mild and we can probably start far earlier since we are limited on compute
-warmup_steps = 715
+warmup_steps = 15 #715
 
 # TODO learn adam and understand what the hyper parameters mean
 # AdamW works well but we can try plenty of other ones
@@ -482,117 +637,13 @@ warmup_steps = 715
 # Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 optimiser = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=0.1)
 
+# TODO check it because the warmup does not seem right - do it in the notebook with the for loop
+# for _ in range(50):
+        #     self.learning_rate_scheduler.step()
+        #     print(self.learning_rate_scheduler.get_last_lr())
 warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, min_learning_rate, max_learning_rate, warmup_steps)
 cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, max_steps, min_learning_rate)
 learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps])
 
-# TODO Tidy up this code - move each separate one into the class - maybe make a separate class that takes a model instead and lets you do sampling, evaluation, inference
-for step in range(max_steps):
-
-    # Evaluate our model a certain amount of steps
-    if step % 100 == 0:
-        print("Evaluating")
-        model.eval()
-        validation_dataloader.reset()
-        with torch.no_grad():
-            validation_loss_accumulation = 0.0
-            validation_loss_steps = 20
-            for _ in range(validation_loss_steps):
-                x, targets = validation_dataloader.next_batch()
-                x, targets = x.to(device), targets.to(device)
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
-                    logits, loss = model(x, targets)
-                loss = loss / validation_loss_steps
-                validation_loss_accumulation += loss.detach()
-            
-        print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
-
-    # TODO THIS MAY ONLY SAMPLE WITHOUT TORCH.COMPILE, so if its on then don't sample if its off give user choice - TEST IF BROKEN OR NOT
-    if step % 100 == 0:
-        print("Sampling")
-        # While the size of the rows that we will keep appending tokens to is smaller than our limit length
-        model.eval()
-        number_of_sequences = 4
-        max_length = 35
-        # Here we are just repeating the same start sentence tokens
-        sentence_start = "I am a doctor, let me teach you about"
-        # Get our prefix tokens given a string
-        tokens = encoding.encode(sentence_start)
-        # Flatten out the tensor and repeat it number of sequences times
-        # TODO at the check check that Unsqueeze(0) shouldn't be needed here)
-        tokens = torch.tensor(tokens).unsqueeze(0).repeat(number_of_sequences, 1)
-        x = tokens.to(device)
-        while x.size(1) < max_length:
-            # We do not want to cache any tensors, no need to prepare for .backward() which will be more efficient
-            with torch.no_grad():
-                logits, loss = model(x)
-                # Now we know each logit's position predicts the next position so if we want to generate a sentence we can 
-                # take the last logit in each batch sequence - remember each logit is still of size vocabulary_size
-                # TODO this implementation can be more efficient we are throwing away all other logits
-                logits = logits[:, -1, :]
-                # Now that we have the raw logits we take the softmax
-                # We want to softmax the final dimension of size vocabulary_size to then sample from that distribution of probabilities
-                probabilities = F.softmax(logits, dim = -1)
-                # TODO check how sampling in the open ai tensorflow implementation works
-                # This will clamp all other probabilities below 50 and thus it will keep the model within teh vicinity of likely tokens
-                # They will all be renormalised and probabilities updated
-                # topk_probabilities and the indices are all sorted in order by the topk function
-                topk_probabilities, topk_indices = torch.topk(probabilities, 50, dim=-1)
-                # After we get the top k highest probabilities we can sample from them
-                # we then sample a value from them based on their probabilities giving us a (B, 1) tensor
-                tokens = torch.multinomial(topk_probabilities, 1)
-                # We are taking the second dimension and picking out the indices of the tokens that were sampled
-                indices = torch.gather(topk_indices, -1, tokens)
-                # Concatenate the new token index for each sentence with the current sentences x that we have
-                # So we have a tensor of size [B, T] and [B, 1] to a [B, T+1]
-                x = torch.cat((x, indices), dim=1)
-                
-        # All layers and modules are pre initialised randomly
-        for i in range(number_of_sequences):
-            tokens = x[i, :max_length].tolist()
-            decoded = encoding.decode(tokens)
-            print(decoded)
-
-    model.train()
-    t0 = time.time()
-    optimiser.zero_grad()
-    loss_accumulation = 0.0
-    for mini_batch_step in range(gradient_accumulation_steps):
-        x, targets = train_dataloader.next_batch()
-        x, targets = x.to(device), targets.to(device)
-
-        # Automatic mixed precision - Autocast guidance
-        # Autocast is a context manager / decorator that allows regions of the script to run in mixed precisoin
-        # It will run in a dtype chosen by autocast to improve performance and maintain accuracy
-        # Autocast should only wrap the forward pass of the network including hte loss computation, no backward passes are recommended using autocast
-        # Warning: We do not want to use float16 otherwise we will need gradient scalars as they have a reduced range whilst bfloat16 has reduced precision
-        with torch.autocast(device_type=device, dtype=torch.bfloat16):
-            # Mainly matrix multiplications are autocast to bfloat16
-            # LayerNorm, softmax, logs will remain in float32 as they are susceptible to more precision changes
-            logits, loss = model(x, targets)
-
-        # TODO learn why gradient accumulation needs normalisation of this value
-        # TODO this can be taken out as it will be a constant factor applied to everything
-        # We need to make sure that we normalise the values and thus
-        loss = loss / gradient_accumulation_steps
-        # We need to detach the loss tensor, this is so that the tensor is not attached from the graph we just keep track of the values
-        loss_accumulation += loss.detach()
-        # Gradients will accumulate
-        loss.backward()
-
-    # TODO check if clipping slows it - we might be able to train quicker
-    # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
-    # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
-    global_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    optimiser.step()
-
-    # Update our learning rate according to the scheduler
-    learning_rate_scheduler.step()
-
-    # Wait for the GPU to complete otherwise it will time it before GPU is finished
-    torch.cuda.synchronize()
-    t1 = time.time()
-    dt = (t1 - t0)
-    tokens_per_second = (train_dataloader.B * train_dataloader.T * gradient_accumulation_steps) / (dt)
-    # TODO add gradient accumulation step and epochs and the number of batches / accumulations per epoch - add the step value too out of total steps, calculate an estimate for how long it will take
-    print(f"Current loss: {loss_accumulation.item()} - learning rate: {learning_rate_scheduler.get_last_lr()[0]:.4f}  - time: {dt*1000} - processing: {tokens_per_second} tokens/second")
+trainer = Trainer(model, optimiser, learning_rate_scheduler, device, max_steps, gradient_accumulation_steps, train_dataloader, evaluation_dataloader)
+trainer.start()
