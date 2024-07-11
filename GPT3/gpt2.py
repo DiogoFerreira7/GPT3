@@ -9,13 +9,6 @@ import numpy as np
 from transformers import GPT2LMHeadModel
 from math import sqrt, cos, pi
 
-# This is by default highest - in float32
-# If we set this to "high" then it will use TensorFloat32 when it is available
-# Medium with bfloat16 instead but it is no where near as precise
-# A lot of the workloads in training as memory bound and thus even though we are supposed to get an 8x speed up it is bottlenecked and memory bound
-# Note: Ampere / Turing architectures are required respectively
-torch.set_float32_matmul_precision("high")
-
 # TODO read through his git read me at the bottom for issues
 
 # TODO make it different - add optional timing during inference for optimisation use time.time() and torch.cuda.synchronize() before the last one and check the difference
@@ -360,28 +353,7 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.c_proj(y)
         return y
-
-# Device initialisation - the code will adapt to whatever device is being used
-# using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
-# torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
-
-# model = GPT2.from_pretrained("gpt2")
-# Initialising with the default config
-model = GPT2(GPTConfig())
-
-# During inference we have to make sure that we set the model to evaluation mode as BatchNorm and Dropout layers act different
-# model.eval()
-# Move every single tensors to cuda
-model.to(device)
-
-# There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
-# GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
-# that memory is all on a GPU which prevents round trips - this is called kernel fusion
-# model = torch.compile(model)
-
+    
 # Creating our dataloader to get batches
 class Dataloader:
     # TODO permute the shards / the documents - or add randomness to the data selected if the dataloader and loading method is changed
@@ -433,6 +405,39 @@ class Dataloader:
             self.total_tokens = len(self.tokens)
 
         return x, targets
+    
+class Trainer():
+
+    def __init__(self):
+        pass
+
+# Device initialisation - the code will adapt to whatever device is being used
+# using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
+device = "cpu"
+if torch.cuda.is_available():
+    device = "cuda"
+# torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
+
+# This is by default highest - in float32
+# If we set this to "high" then it will use TensorFloat32 when it is available
+# Medium with bfloat16 instead but it is no where near as precise
+# A lot of the workloads in training as memory bound and thus even though we are supposed to get an 8x speed up it is bottlenecked and memory bound
+# Note: Ampere / Turing architectures are required respectively
+torch.set_float32_matmul_precision("high")
+
+# model = GPT2.from_pretrained("gpt2")
+# Initialising with the default config
+model = GPT2(GPTConfig())
+
+# During inference we have to make sure that we set the model to evaluation mode as BatchNorm and Dropout layers act different
+# model.eval()
+# Move every single tensors to cuda
+model.to(device)
+
+# There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
+# GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
+# that memory is all on a GPU which prevents round trips - this is called kernel fusion
+# model = torch.compile(model)
 
 # 50,257 - we would hope that every element is getting roughly a uniform probability so that we are not confidently wrong - 1/50257
 # Then if we want the negative loss likelihood (cross entropy) we can do -ln(1/50257)
@@ -457,31 +462,17 @@ validation_dataloader = Dataloader(B=B, T=T, split="val")
 
 # logits, loss = model(x, targets)
 
-# TODO set a pytorch learning rate scheduler instead of manually updating it
-# The decay time is less than the max steps time - it should train at 10% near the end
-# They use a cosine decay learning rate scheduler down to 10% of the original learning rate value and a warmup for the first tokens
+encoding = tiktoken.get_encoding("gpt2")
 
+# TODO when all of these are organised go thorugh teh paper and make these calculations automatic e.g 10% min_lr (already is done) and others
 # Aiming for 0.5M which is around 2^19 tokens per batch (we are using gradient accumulation of course), 
 # we want 10^9 - 10B total tokens processed which is what we have. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
-max_lr = 6e-4
-min_lr = max_lr * 0.1
+max_learning_rate = 6e-4
+min_learning_rate = max_learning_rate * 0.1
 max_steps = 19073
 # Gpt3 paper warms up over 375 million tokens, we have 0.5M per batch so we do this over 715 steps, 375e6 / 2^19 = 715 warm up steps
 # 715 matches exactly but this is quite mild and we can probably start far earlier since we are limited on compute
 warmup_steps = 715
-
-def get_lr(step):
-    if step < warmup_steps:
-        return max_lr * (step + 1) / warmup_steps
-    if step > max_steps:
-        return min_lr
-    
-    decay_rate = (step - warmup_steps) / (max_steps - warmup_steps)
-    assert 0 <= decay_rate <= 1
-    coeff = 0.5 * (1.0 + cos(pi * decay_rate))
-    return min_lr + coeff * (max_lr - min_lr)
-
-encoding = tiktoken.get_encoding("gpt2")
 
 # TODO learn adam and understand what the hyper parameters mean
 # AdamW works well but we can try plenty of other ones
@@ -490,6 +481,10 @@ encoding = tiktoken.get_encoding("gpt2")
 # Fused by default is set to False to provide adequate bake in time as it is relatively new
 # Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 optimiser = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=0.1)
+
+warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, min_learning_rate, max_learning_rate, warmup_steps)
+cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, max_steps, min_learning_rate)
+learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps])
 
 # TODO Tidy up this code - move each separate one into the class - maybe make a separate class that takes a model instead and lets you do sampling, evaluation, inference
 for step in range(max_steps):
@@ -585,22 +580,19 @@ for step in range(max_steps):
         # Gradients will accumulate
         loss.backward()
 
-    # Set our learning rate according to the scheduler
-    lr = get_lr(step)
-    for group in optimiser.param_groups:
-        group['lr'] = lr
-
     # TODO check if clipping slows it - we might be able to train quicker
     # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
     # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
     global_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimiser.step()
 
+    # Update our learning rate according to the scheduler
+    learning_rate_scheduler.step()
+
     # Wait for the GPU to complete otherwise it will time it before GPU is finished
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0)
     tokens_per_second = (train_dataloader.B * train_dataloader.T * gradient_accumulation_steps) / (dt)
-    # TODO when learning rate scheduler is added we can keep track of it
-    # we can also add gradient accumulation step and epochs and the number of batches / accumulations per epoch
-    print(f"Current loss - {loss_accumulation.item()} - time: {dt*1000} - processing: {tokens_per_second} tokens/second")
+    # TODO add gradient accumulation step and epochs and the number of batches / accumulations per epoch - add the step value too out of total steps, calculate an estimate for how long it will take
+    print(f"Current loss: {loss_accumulation.item()} - learning rate: {learning_rate_scheduler.get_last_lr()[0]:.4f}  - time: {dt*1000} - processing: {tokens_per_second} tokens/second")
