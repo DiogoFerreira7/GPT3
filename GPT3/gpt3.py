@@ -15,12 +15,12 @@ import pyo3_runtime
 import time
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, checkpointing and uploading to huggingface
+# TODO After model training upload it to huggingface, see if inference can be done on it?
+
 # TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
     # https://pytorch.org/tutorials/beginner/saving_loading_models.html
 
 # TODO instead of using tiktoken try using own tokeniser
-
-# TODO After model training upload it to huggingface, see if inference can be done on it?
 
 # TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
     # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
@@ -28,13 +28,10 @@ import time
 
 # TODO Try EleutherAI for implementing custom models
 # TODO https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/interface.md#external-library-usage
-    # Put results within the readme after
-    # Check his code implementation he used for HellaSwag
 
 # TODO Enable pylint and fix any errors / warnings that I can to make the code more readable
 
 # Hyperparameters
-
 @dataclass
 class TrainerHyperParameters:
     """
@@ -643,7 +640,6 @@ train_dataloader = Dataloader(batch_size=hyperparameters.batch_size, token_size=
 evaluation_dataloader = Dataloader(batch_size=hyperparameters.batch_size, token_size=hyperparameters.token_size, split="val")
 
 # Optimiser and Schedulers
-# AdamW works well but we can try plenty of other ones - keeps momentum buffers (similar to RMSProp) this speeds up optimisation
 # Fused by default is set to False to provide adequate bake in time as it is relatively new - Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 # GPT3 used Adam with beta_1 = 0.9, beta_2 = 0.95 and e = 1e-8
 optimiser = torch.optim.AdamW(model.parameters(), lr=hyperparameters.learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=hyperparameters.weight_decay)
