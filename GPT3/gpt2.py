@@ -8,7 +8,14 @@ import tiktoken
 import numpy as np
 from transformers import GPT2LMHeadModel
 
+from datasets import load_dataset
+import pyo3_runtime
+
 import time
+
+# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader - Pytorch util dataloaders 
+    # streaming and using that loaded version to do training
+    # add randomness
 
 # TODO instead of using tiktoken try using own tokeniser
 
@@ -16,10 +23,6 @@ import time
 
 # TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
     # https://pytorch.org/tutorials/beginner/saving_loading_models.html
-
-# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader - Pytorch util dataloaders 
-    # streaming and using that loaded version to do training
-    # add randomness
 
 # TODO After model training upload it to huggingface, see if inference can be done on it?
 
@@ -66,6 +69,8 @@ class TrainerHyperParameters:
     mini_batch_size = batch_size * token_size
     gradient_accumulation_steps = total_batch_size // (mini_batch_size)
     assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
+
+    # TODO assert warmup steps is less than max steps
 
 @dataclass
 class GPTHyperParameters:
@@ -381,36 +386,39 @@ class CausalSelfAttention(nn.Module):
     
 # Creating our dataloader to get batches
 class Dataloader:
-    # TODO permute the shards / the documents - or add randomness to the data selected if the dataloader and loading method is changed
-    def __init__(self, batch_size, token_size, split):
+    def __init__(self, batch_size, token_size, split, num_streamed_examples=100):
+        self.encoding = tiktoken.get_encoding("gpt2")
         self.batch_size = batch_size
         self.token_size = token_size
         self.total_batch_size = batch_size*token_size
+        self.num_streamed_examples = num_streamed_examples
+    
         assert split in {"train", "val"}
+        self.my_iterable_dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-100BT", split="train", streaming=True)
 
-        # Getting the shards
-        data_root = "edu_fineweb10B"
-        shards = os.listdir(data_root)
-        shards = [shard for shard in shards if split in shard]
-        shards = sorted(shards)
-        self.shards = [os.path.join(data_root, shard) for shard in shards]
-        self.total_shards = len(self.shards)
-        assert self.total_shards > 0, "no shards found"
-        print(f"Retrieved {self.total_shards} shards")
+        # Reset the tracker
         self.reset()
 
     def reset(self):
-        self.current_shard = 0
-        # Tokens here may have to be taken to the device
-        self.tokens = self.load_tokens(self.shards[self.current_shard])
+        self.tokens = self.load_tokens()
         self.total_tokens = len(self.tokens)
-        # Keep track of where in our data have previously loaded things
         self.position = 0
 
-    def load_tokens(self, filename):
-        npt = np.load(filename)
-        ptt = torch.tensor(npt, dtype=torch.long)
-        return ptt
+    def load_tokens(self):
+        tokens = [self.encoding._special_tokens['<|endoftext|>']]
+
+        # Create a streamable iterator of the dataset¬
+        data = iter(self.my_iterable_dataset.take(self.num_streamed_examples))
+        for _ in range(self.num_streamed_examples):
+            example = next(data)
+            # Tokenise it and add it to the tokens array
+            tokens.extend(self.encoding.encode_ordinary(example["text"]))
+
+        # Update the dataset and skip the ones already used
+        self.my_iterable_dataset = self.my_iterable_dataset.skip(10)
+        tokens_np = np.array(tokens)
+        # Convert to a tensor and return
+        return torch.tensor(tokens_np.astype(np.uint16), dtype=torch.long)
 
     def next_batch(self):
         # We want our buffer to include the extra character so that we can easily get our targets using .view()
@@ -422,10 +430,9 @@ class Dataloader:
         # Update our position within the dataset, unless if that new position does not have enough data for another batch
         self.position += self.total_batch_size
         if self.position + (self.total_batch_size + 1) > self.total_tokens:
-            self.current_shard = (self.current_shard + 1) % self.total_shards
-            self.tokens = self.load_tokens(self.shards[self.current_shard])
-            self.position = 0
+            self.tokens = self.load_tokens()
             self.total_tokens = len(self.tokens)
+            self.position = 0
 
         return x, targets
     
@@ -435,7 +442,7 @@ class Trainer():
                  max_steps, gradient_accumulation_steps,
                  train_dataloader, evaluation_dataloader,
                  gradient_clipping=True, max_norm=1.0,
-                 sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=50, steps_per_sample=100,
+                 sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=25, sampling_length=50, steps_per_sample=100,
                  evaluate=True, steps_per_evaluation=100,
                  torch_compile=True, matmul_precision="high",
                 ):
@@ -518,6 +525,8 @@ class Trainer():
                     print("\nSampling")
                     self.sampling()
 
+        self.sampling()
+
     def training(self):
         self.model.train()
         self.optimiser.zero_grad()
@@ -552,23 +561,6 @@ class Trainer():
         # Update our learning rate according to the scheduler
         self.learning_rate_scheduler.step()
 
-    def evaluation(self):
-        model.eval()
-        self.evaluation_dataloader.reset()
-
-        with torch.no_grad():
-            validation_loss_accumulation = 0.0
-            validation_loss_steps = 20
-            for _ in range(validation_loss_steps):
-                x, targets = self.evaluation_dataloader.next_batch()
-                x, targets = x.to(device), targets.to(device)
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
-                    _, loss = model(x, targets)
-                loss = loss / validation_loss_steps
-                validation_loss_accumulation += loss.detach()
-            
-        print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
-
     def sampling(self):
         # While the size of the rows that we will keep appending tokens to is smaller than our limit length
         model.eval()
@@ -597,16 +589,31 @@ class Trainer():
                 # Concatenate the new token index for each sentence with the current sentences x that we have
                 # So we have a tensor of size [B, T] and [B, 1] to a [B, T+1]
                 sampling_tokens = torch.cat((sampling_tokens, indices), dim=1)
-        
+
         for i in range(self.sequences_to_sample):
             try:
                 tokens = sampling_tokens[i, :self.sampling_length].tolist()
                 decoded = self.encoding.decode(tokens)
                 print(decoded)
-            except Exception as decoding_exception:
+            except pyo3_runtime.PanicException as decoding_exception:
                 print(decoding_exception)
 
+    def evaluation(self):
+        model.eval()
+        self.evaluation_dataloader.reset()
 
+        with torch.no_grad():
+            validation_loss_accumulation = 0.0
+            validation_loss_steps = 20
+            for _ in range(validation_loss_steps):
+                x, targets = self.evaluation_dataloader.next_batch()
+                x, targets = x.to(device), targets.to(device)
+                with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                    _, loss = model(x, targets)
+                loss = loss / validation_loss_steps
+                validation_loss_accumulation += loss.detach()
+            
+        print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
 
 # Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
 # torch.backend.mps.is_available() - used for apple silicone mps
