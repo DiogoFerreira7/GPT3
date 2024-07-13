@@ -8,21 +8,17 @@ import tiktoken
 import numpy as np
 from transformers import GPT2LMHeadModel
 
+from tqdm import tqdm
 from datasets import load_dataset
 import pyo3_runtime
 
 import time
 
-# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader - Pytorch util dataloaders 
-    # streaming and using that loaded version to do training
-    # add randomness
-
-# TODO instead of using tiktoken try using own tokeniser
-
-# TODO go thorugh andrejs checkpoint saving and checkpoint resuming, this is important - makes it so model can be trained multiple days in a row and keep improving
-
+# TODO go thorugh andrejs checkpoint saving and checkpoint resuming, checkpointing and uploading to huggingface
 # TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
     # https://pytorch.org/tutorials/beginner/saving_loading_models.html
+
+# TODO instead of using tiktoken try using own tokeniser
 
 # TODO After model training upload it to huggingface, see if inference can be done on it?
 
@@ -50,7 +46,7 @@ class TrainerHyperParameters:
     """
     # Data 
     
-    total_batch_size: int = 1024
+    total_batch_size: int = 16384
     batch_size: int = 1
     token_size: int = 1024 # 2048 in GPT3
 
@@ -68,9 +64,10 @@ class TrainerHyperParameters:
 
     mini_batch_size = batch_size * token_size
     gradient_accumulation_steps = total_batch_size // (mini_batch_size)
-    assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
 
-    # TODO assert warmup steps is less than max steps
+    # Assertions
+    assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
+    assert warmup_steps < max_steps, "Warm up steps must be less than the max steps you intend to train for"
 
 @dataclass
 class GPTHyperParameters:
@@ -118,7 +115,7 @@ class GPT3(nn.Module):
             wte = nn.Embedding(config.vocabulary_size, config.number_of_embeddings),
             wpe = nn.Embedding(config.block_size, config.number_of_embeddings),
             # Hidden Layer - ModuleList just like module dict allows us to index but using integers instead of keys / strings
-            h = nn.ModuleList([Block(config) for number_of_blocks in range(config.number_of_layers)]),
+            h = nn.ModuleList([Block(config) for _ in range(config.number_of_layers)]),
             # Final LayerNorm
             ln_f = nn.LayerNorm(config.number_of_embeddings),
         ))
@@ -134,31 +131,31 @@ class GPT3(nn.Module):
         # This way we set the pointers equal to eachother and we can share them - this is not the most efficient way as we can still not generate the wte embeddings initially
         self.transformer.wte.weight = self.lm_head.weight
 
-        # TODO check how these layers are alraedy initialised
         # 50,257 - we would hope that every element is getting roughly a uniform probability so that we are not confidently wrong - 1/50257
         # Then if we want the negative loss likelihood (cross entropy) we can do -ln(1/50257)
         # We want our loss to be roughly 10.8, in the model prior to pretraining it is 11.08
         self.apply(self._initialise_weights)
 
     def _initialise_weights(self, module):
-        # TODO This is the default implementation if we are following the GPT3 source code - 1/root(number of features) - update it so that it is dynamic
-        # TODO prevent the double initialisation of the linear and wte tensors
-        if isinstance(module, nn.Linear) or isinstance(module, nn.Embedding):
-            std = 0.02
-            if hasattr(module, "NANOGPT_SCALE_INIT"):
-                # Every block of the residual network keeps adding and the variance keeps updating - we want to remove this growth
+        # Apply a standard deviation of 0.02 as according to the paper
+        std = 0.02
+        # Every block of the residual network keeps adding and the variance keeps updating - we want to remove this growth
+        if hasattr(module, "residual_initialisation_scaling"):
                 # This can be done by updating the weights by 1/root(n) where n is the number of residual layers
                 std *= (2 * self.config.number_of_layers) ** -0.5
+        
+        # Preventing double initialisation of the wte and lm_head since we are weight sharing
+        if (isinstance(module, nn.Linear) or isinstance(module, nn.Embedding)) and module is not self.lm_head:
             torch.nn.init.normal_(module.weight, mean=0.0, std=std)
 
-            # If it is a linear layer that has bias then we can initialise them all to 0
+            # Linear layers have a bias too
             if isinstance(module, nn.Linear):
                 if module.bias is not None:
                     torch.nn.init.zeros_(module.bias)
 
     def forward(self, tokens, targets=None):
         # Tokens of shape (B, T)
-        batch_size, token_size = tokens.size()
+        _, token_size = tokens.size()
 
         # Make sure that initially our sequence of tokens being forwarded is shorter than our block_size (context length)
         assert token_size <= self.config.block_size, f"Cannot forward a sequence of length {token_size}, the block size is only {self.config.block_size}"
@@ -206,7 +203,6 @@ class GPT3(nn.Module):
             "vocabulary_size": 50257,
             "block_size": 1024
             }
-
 
         # Initialise our GPT model
         config = GPTHyperParameters(**configuration)
@@ -311,8 +307,7 @@ class MLP(nn.Module):
         # Exact version is better the original change was due to an ERF function
         self.gelu = nn.GELU(approximate="tanh")
         self.c_proj = nn.Linear(4 * config.number_of_embeddings, config.number_of_embeddings)
-        # TODO see if there is another way to do NANOGPT SCALE INIT - maybe within the residual forward itself?
-        self.c_proj.NANOGPT_SCALE_INIT = 1
+        self.residual_initialisation_scaling = True
 
     def forward(self, x):
         x = self.c_fc(x)
@@ -339,8 +334,8 @@ class CausalSelfAttention(nn.Module):
         self.c_attn = nn.Linear(config.number_of_embeddings, 3 * config.number_of_embeddings)
         # output projection
         self.c_proj = nn.Linear(config.number_of_embeddings, config.number_of_embeddings)
-        # 
-        self.c_proj.NANOGPT_SCALE_INIT = 1
+        # Check if there is any residual initialisation
+        self.residual_initialisation_scaling = True
         # regularization
         self.number_of_heads = config.number_of_heads
         self.number_of_embeddings = config.number_of_embeddings
@@ -437,12 +432,28 @@ class Dataloader:
         return x, targets
     
 class Trainer():
-    # TODO big docstring here explaining the most unique options and parameters to pass in - see if you can copy pytorch comments
+    """
+    Class for training, sampling and evaluation of a GPT3 model.
+
+    Takes in a model and given an optimiser and schedule it will train the model for max_steps,
+    and will evaluate and sample the model (by default given that sample=True and evaluate=True respectively),
+    The sampling must take in a string which by default is "I am a doctor, let me teach you about",
+    Optimisations have also been added including torch_compile and matmul_precision during training.
+    Autocast will always be used during training wherever possible.
+
+    Attributes:
+        transformer (nn.ModuleDict): Dictionary containing the transformer components.
+            Includes:
+                - 'wte': Embedding layer for word/token embeddings.
+        model (GPT3): GPT model initialised with the chosen GPTHyperParameters dataclass.
+        optimiser (torch.nn.optim): By default the trainer will take in an AdamW optimiser, any should work.
+        device ("cpu"/"cuda"): Choice of where the trainer will keep the tensors to train.
+    """
     def __init__(self, model, optimiser, learning_rate_scheduler, device,
                  max_steps, gradient_accumulation_steps,
                  train_dataloader, evaluation_dataloader,
                  gradient_clipping=True, max_norm=1.0,
-                 sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=25, sampling_length=50, steps_per_sample=100,
+                 sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=45, steps_per_sample=100,
                  evaluate=True, steps_per_evaluation=100,
                  torch_compile=True, matmul_precision="high",
                 ):
@@ -483,7 +494,6 @@ class Trainer():
         self.loss = 0
 
         # Optimisations
-
         # There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
         # GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
         # that memory is all on a GPU which prevents round trips - this is called kernel fusion
@@ -531,7 +541,7 @@ class Trainer():
         self.model.train()
         self.optimiser.zero_grad()
         loss_accumulation = 0.0
-        for _ in range(self.gradient_accumulation_steps):
+        for _ in tqdm(range(self.gradient_accumulation_steps)):
             x, targets = self.train_dataloader.next_batch()
             x, targets = x.to(self.device), targets.to(self.device)
 
