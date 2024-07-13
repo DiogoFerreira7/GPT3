@@ -27,6 +27,9 @@ This [tokenisation website](https://tiktokenizer.vercel.app), examples of how th
 
 Here is an awesome repository you can use if you want to train your own model on a different dataset - make sure you choose Pre Training datasets for this model (PT) https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file
 
+
+https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1
+
 #### Training your own model
 
 Calculations
@@ -35,6 +38,9 @@ Max steps
 
 
 The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
+
+By default torch.compile is on, I have it turned off since I am using Pytorch 3.12 which is not currently supported, but I would highly recommend using a supported version
+RuntimeError: Dynamo is not supported on Python 3.12+
 
 #### Evaluating
 
@@ -78,12 +84,13 @@ A lot of the following optimisations took advantage of kernel fusion, I found [t
 - Preventing reinitialisation of wte and lm_head as they share the same tensor
 - torch.compile
 - Using FlashAttention which torch.compile
+- Gradient accumulation normalisation changed from a per mini batch basis, it was wasting compute by normalising after every gradient calculation
 
 <hr>
 
 ### Future ideas & Improvements
 
-Potential improvements includes:
+1. Potential improvements includes:
 [DDP (Distributed Data Parallel)](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html#:~:text=DistributedDataParallel%20(DDP)%20implements%20data%20parallelism,collective%20communications%20in%20the%20torch.).
 
 Considerations for this improvement:
@@ -92,7 +99,9 @@ Considerations for this improvement:
 - Loss and gradients would have to be averaged across all processes, we can make our master / main process do the printing and logging information. 
 - Logging would also have to take into account the number of GPUs processing especially in the tokens/second calculation.
 
-Once pre trained it would be quite interesting to further take the model through fine-tuning stages that would allow it to interact in a conversational manner and being able to use RLHF. [OpenAI guidance is here](https://platform.openai.com/docs/guides/fine-tuning)
+2. Once pre trained it would be quite interesting to further take the model through fine-tuning stages that would allow it to interact in a conversational manner and being able to use RLHF. [OpenAI guidance is here](https://platform.openai.com/docs/guides/fine-tuning)
+
+3. Consider using batch size scheduling like as used by the paper, potentially done by reinitialising the dataloader
 
 <hr>
 

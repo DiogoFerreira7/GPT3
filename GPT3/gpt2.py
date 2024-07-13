@@ -10,25 +10,14 @@ from transformers import GPT2LMHeadModel
 
 import time
 
-# TODO read through his git read me at the bottom for issues
-
-# TODO make it different - add optional timing during inference for optimisation use time.time() and torch.cuda.synchronize() before the last one and check the difference
-
-# TODO Change everything that I think could maek it better, e.g naming - how things work, check with gpt for different ways to write the same code
-
-# TODO add dropout check where the paper added them
-
-# TODO look into batch size scheduling in the gpt 3 paper and we can reinitialise the dataloader as an alternative - or just include this idea in readme
-
-# TODO check the hugging face / open ai implementations for ideas of how to organise things
-
-# TODO look for regularisation methods such as Dropout
-
 # TODO see if the model forward processing / loss calculation can be split (seems inefficient to do it this way)
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, this is important - makes it so model can be trained multiple days in a row and keep improving
 
 # TODO instead of using tiktoken try using own tokeniser
+
+# TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
+    # https://pytorch.org/tutorials/beginner/saving_loading_models.html
 
 # TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader
 # streaming and using that loaded version to do training
@@ -38,6 +27,7 @@ import time
 
 # TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
     # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
+    # get paper and write down default values - set them as defaults
 
 # TODO Try EleutherAI for implementing custom models
 # TODO https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/interface.md#external-library-usage
@@ -111,6 +101,9 @@ class GPT2(nn.Module):
         self.transformer.wte.weight = self.lm_head.weight
 
         # TODO check how these layers are alraedy initialised
+        # 50,257 - we would hope that every element is getting roughly a uniform probability so that we are not confidently wrong - 1/50257
+        # Then if we want the negative loss likelihood (cross entropy) we can do -ln(1/50257)
+        # We want our loss to be roughly 10.8, in the model prior to pretraining it is 11.08
         self.apply(self._initialise_weights)
 
     def _initialise_weights(self, module):
@@ -410,16 +403,14 @@ class Dataloader:
         return x, targets
     
 class Trainer():
-    # TODO make it so parameters are easily configurable - most of them default that you dont have to pass in
-    # Try to make everything a parameter
-    # TODO add test for torch.compile, if on then prevent sampling
-    # TODO put all the asserts in the model init, add new ones too
-
     def __init__(self, model, optimiser, learning_rate_scheduler, device,
                  max_steps, gradient_accumulation_steps,
                  train_dataloader, evaluation_dataloader,
-                 sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=50, 
-                 gradient_clipping=True, max_norm=1.0):
+                 gradient_clipping=True, max_norm=1.0,
+                 sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=50, steps_per_sample=100,
+                 evaluate=True, steps_per_evaluation=100,
+                 torch_compile=True, matmul_precision="high",
+                ):
         self.model = model
         self.optimiser = optimiser
         self.learning_rate_scheduler = learning_rate_scheduler
@@ -427,6 +418,17 @@ class Trainer():
 
         # Loop
         self.max_steps = max_steps
+        
+        # Sampling parameters
+        self.sample = sample
+        self.steps_per_sample = steps_per_sample
+        self.sampling_string = sampling_string
+        self.sequences_to_sample = sequences_to_sample
+        self.sampling_length = sampling_length
+
+        # Evaluation parameters
+        self.evaluate = evaluate
+        self.steps_per_evaluation = steps_per_evaluation
         
         # Training parameters
         self.gradient_clipping = gradient_clipping
@@ -437,29 +439,29 @@ class Trainer():
         self.train_dataloader = train_dataloader
         self.evaluation_dataloader = evaluation_dataloader
 
-        # Sampling parameters
-        self.sampling_string = sampling_string
-        self.sequences_to_sample = sequences_to_sample
-        self.sampling_length = sampling_length
-
         # Logging variables
         self.loss = 0
 
+        # Optimisations
+
+        # There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
+        # GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
+        # that memory is all on a GPU which prevents round trips - this is called kernel fusion
+        if torch_compile:
+            self.model = torch.compile(self.model)
+
+        # This is by default highest - in float32, if we set this to "high" then it will use TensorFloat32 when it is available
+        # Medium with bfloat16 instead but it is no where near as precise
+        # A lot of the workloads in training as memory bound and thus even though we are supposed to get an 8x speed up it is bottlenecked and memory bound
+        # Note: Ampere / Turing architectures are required respectively
+        torch.set_float32_matmul_precision(matmul_precision)
+
     def start(self):
-        # TODO Tidy up this code - move each separate one into the class - maybe make a separate class that takes a model instead and lets you do sampling, evaluation, inference
         for step in range(self.max_steps):
-
-            # Evaluation
-            if step % 100 == 10:
-                self.evaluate()
-
-            # Sampling
-            if step % 100 == 10:
-                self.sample()
 
             # Training
             start_time = time.time()
-            self.train()
+            self.training()
             # Wait for the GPU to complete before timing
             torch.cuda.synchronize()
             end_time = time.time()
@@ -467,11 +469,23 @@ class Trainer():
             # Logging
             time_taken = end_time - start_time
             tokens_per_second = (train_dataloader.B * train_dataloader.T * gradient_accumulation_steps) / (time_taken)
-            # TODO add gradient accumulation step and epochs and the number of batches / accumulations per epoch - add the step value too out of total steps, calculate an estimate for how long it will take
-            print(f"Step {step}/{self.max_steps}, Loss: {self.loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second}")
+            predicted_time = int((self.max_steps - step) * time_taken)
+            time_left_string = f"{predicted_time//3600}h:{(predicted_time%3600)//60}m:{predicted_time%60}s"
+            print(f"Step {step}/{self.max_steps}, Loss: {self.loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second} - Time Remaining: {time_left_string}")
 
+            # Evaluation
+            if self.evaluate:
+                if step % self.steps_per_evaluation == 0:
+                    print("\nEvaluating")
+                    self.evaluation()
+        
+            # Sampling
+            if self.sample:                    
+                if step % self.steps_per_sample == 0:
+                    print("\nSampling")
+                    self.sampling()
 
-    def train(self):
+    def training(self):
         self.model.train()
         self.optimiser.zero_grad()
         loss_accumulation = 0.0
@@ -479,8 +493,7 @@ class Trainer():
             x, targets = self.train_dataloader.next_batch()
             x, targets = x.to(self.device), targets.to(self.device)
 
-            # Automatic mixed precision - Autocast guidance
-            # Autocast is a context manager / decorator that allows regions of the script to run in mixed precision
+            # Automatic mixed precision - context manager / decorator that allows regions of the script to run in mixed precision
             # It will run in a dtype chosen by autocast to improve performance and maintain accuracy
             # Autocast should only wrap the forward pass of the network including hte loss computation, no backward passes are recommended using autocast
             # Warning: We do not want to use float16 otherwise we will need gradient scalars as they have a reduced range whilst bfloat16 has reduced precision
@@ -489,9 +502,6 @@ class Trainer():
                 # LayerNorm, softmax, logs will remain in float32 as they are susceptible to more precision changes
                 _, loss = self.model(x, targets)
 
-            # TODO learn why gradient accumulation needs normalisation of this value
-            # TODO this can be taken out as it will be a constant factor applied to everything
-            # We need to make sure that we normalise the values and thus
             loss = loss / self.gradient_accumulation_steps
             # We need to detach the loss tensor, this is so that the tensor is not attached from the graph we just keep track of the values
             loss_accumulation += loss.detach()
@@ -500,7 +510,6 @@ class Trainer():
 
         self.loss = loss_accumulation.item()
 
-        # TODO check if clipping slows it - we might be able to train quicker
         # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
         # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
         if self.gradient_clipping:
@@ -510,7 +519,7 @@ class Trainer():
         # Update our learning rate according to the scheduler
         self.learning_rate_scheduler.step()
 
-    def evaluate(self):
+    def evaluation(self):
         model.eval()
         self.evaluation_dataloader.reset()
 
@@ -527,28 +536,24 @@ class Trainer():
             
         print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
 
-    def sample(self):
+    def sampling(self):
         # While the size of the rows that we will keep appending tokens to is smaller than our limit length
         model.eval()
         
         # Get our prefix tokens given a string
         tokens = encoding.encode(self.sampling_string)
-        # Flatten out the tensor and repeat it number of sequences times
-        # TODO at the check check that Unsqueeze(0) shouldn't be needed here)
-        tokens = torch.tensor(tokens).unsqueeze(0).repeat(self.sequences_to_sample, 1)
+        # Repeat our tensor for multiple samples
+        tokens = torch.tensor(tokens).repeat(self.sequences_to_sample, 1)
         x = tokens.to(device)
         while x.size(1) < self.sampling_length:
             # We do not want to cache any tensors, no need to prepare for .backward() which will be more efficient
             with torch.no_grad():
                 logits, _ = model(x)
-                # Now we know each logit's position predicts the next position so if we want to generate a sentence we can 
-                # take the last logit in each batch sequence - remember each logit is still of size vocabulary_size
-                # TODO this implementation can be more efficient we are throwing away all other logits
+                # Each logit's position predicts the next position, take the last logit in each batch sequence - remember each logit is still of size vocabulary_size
                 logits = logits[:, -1, :]
                 # Now that we have the raw logits we take the softmax
                 # We want to softmax the final dimension of size vocabulary_size to then sample from that distribution of probabilities
                 probabilities = F.softmax(logits, dim = -1)
-                # TODO check how sampling in the open ai tensorflow implementation works
                 # This will clamp all other probabilities below 50 and thus it will keep the model within teh vicinity of likely tokens
                 # They will all be renormalised and probabilities updated
                 # topk_probabilities and the indices are all sorted in order by the topk function
@@ -561,58 +566,34 @@ class Trainer():
                 # Concatenate the new token index for each sentence with the current sentences x that we have
                 # So we have a tensor of size [B, T] and [B, 1] to a [B, T+1]
                 x = torch.cat((x, indices), dim=1)
-                
-        # All layers and modules are pre initialised randomly
+        
         for i in range(self.sequences_to_sample):
-            tokens = x[i, :self.sampling_length].tolist()
-            decoded = encoding.decode(tokens)
-            print(decoded)
+            try:
+                tokens = x[i, :self.sampling_length].tolist()
+                decoded = encoding.decode(tokens)
+                print(decoded)
+            except Exception as decoding_exception:
+                print(decoding_exception)
 
-# Device initialisation - the code will adapt to whatever device is being used
-# using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
+# Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
 # torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
 
-# This is by default highest - in float32
-# If we set this to "high" then it will use TensorFloat32 when it is available
-# Medium with bfloat16 instead but it is no where near as precise
-# A lot of the workloads in training as memory bound and thus even though we are supposed to get an 8x speed up it is bottlenecked and memory bound
-# Note: Ampere / Turing architectures are required respectively
-torch.set_float32_matmul_precision("high")
-
+# Choose between the default or pretrained model
 # model = GPT2.from_pretrained("gpt2")
-# Initialising with the default config
 model = GPT2(GPTConfig())
-
-# During inference we have to make sure that we set the model to evaluation mode as BatchNorm and Dropout layers act different
-# model.eval()
-# Move every single tensors to cuda
 model.to(device)
 
-# There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
-# GeLU non linearity - by compiling we know what instructions will be ran in order, e.g element operations for a variable will all the done at once whilst
-# that memory is all on a GPU which prevents round trips - this is called kernel fusion
-# model = torch.compile(model)
-
-# 50,257 - we would hope that every element is getting roughly a uniform probability so that we are not confidently wrong - 1/50257
-# Then if we want the negative loss likelihood (cross entropy) we can do -ln(1/50257)
-# We want our loss to be roughly 10.8, in the model prior to pretraining it is 11.08
-
-
-# B = 16, T = 1024 is the default paper configuration
-# Try to maximise the batch size that will fit your GPU without giving you out of memory errors (use even numbers)
-# We want to get roughly a 0.5M batch size - so we can simulate a 0.5M batch size using gradient accummulation we just have to run for longer
-
-# Nicest power of 2 closest to 0.5M (2^19)
+# Try to maximise the batch size that will fit your GPU without giving you out of memory errors (powers of 2) - closest to 0.5M (2^19)
 total_batch_size = 2048 # 524288 
 B = 1
-# GPT3 has 2048 instead
-T = 1024
+T = 1024 # 2048 in GPT3
 mini_batch_size = B * T
+
 assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
-# After this number of accumulation steps we can do one large update
+# We want to get roughly a 0.5M batch size - so we can simulate a 0.5M batch size using gradient accummulation we just have to run for longer
 gradient_accumulation_steps = total_batch_size // (mini_batch_size)
 train_dataloader = Dataloader(B=B, T=T, split="train")
 evaluation_dataloader = Dataloader(B=B, T=T, split="val")
@@ -620,30 +601,28 @@ evaluation_dataloader = Dataloader(B=B, T=T, split="val")
 encoding = tiktoken.get_encoding("gpt2")
 
 # TODO when all of these are organised go thorugh teh paper and make these calculations automatic e.g 10% min_lr (already is done) and others
-# Aiming for 0.5M which is around 2^19 tokens per batch (we are using gradient accumulation of course), 
 # we want 10^9 - 10B total tokens processed which is what we have. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
 max_learning_rate = 6e-4
-min_learning_rate = max_learning_rate * 0.1
+min_learning_rate_factor = 0.1
+min_learning_rate = max_learning_rate * min_learning_rate_factor
+# TODO calculate the number of steps needed to process 10B total tokens or however long the dataset is - provide a parameter for how many tokens to process
 max_steps = 19073
 # Gpt3 paper warms up over 375 million tokens, we have 0.5M per batch so we do this over 715 steps, 375e6 / 2^19 = 715 warm up steps
 # 715 matches exactly but this is quite mild and we can probably start far earlier since we are limited on compute
-warmup_steps = 15 #715
+warmup_steps = 150 #715
 
-# TODO learn adam and understand what the hyper parameters mean
-# AdamW works well but we can try plenty of other ones
-# Keeps momentum buffers (similar to RMSProp) this speeds up optimisation
+# Optimiser and Schedulers
+# AdamW works well but we can try plenty of other ones - keeps momentum buffers (similar to RMSProp) this speeds up optimisation
+# Fused by default is set to False to provide adequate bake in time as it is relatively new - Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 # GPT3 used Adam with beta_1 = 0.9, beta_2 = 0.95 and e = 1e-8
-# Fused by default is set to False to provide adequate bake in time as it is relatively new
-# Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 optimiser = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=0.1)
 
-# TODO check it because the warmup does not seem right - do it in the notebook with the for loop
-# for _ in range(50):
-        #     self.learning_rate_scheduler.step()
-        #     print(self.learning_rate_scheduler.get_last_lr())
-warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, min_learning_rate, max_learning_rate, warmup_steps)
-cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, max_steps, min_learning_rate)
+warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=warmup_steps)
+cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, max_steps - warmup_steps, min_learning_rate)
 learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps])
 
-trainer = Trainer(model, optimiser, learning_rate_scheduler, device, max_steps, gradient_accumulation_steps, train_dataloader, evaluation_dataloader)
+trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
+                  max_steps, gradient_accumulation_steps, 
+                  train_dataloader, evaluation_dataloader,
+                  torch_compile=False)
 trainer.start()
