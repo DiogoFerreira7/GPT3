@@ -10,18 +10,16 @@ from transformers import GPT2LMHeadModel
 
 import time
 
-# TODO see if the model forward processing / loss calculation can be split (seems inefficient to do it this way)
+# TODO instead of using tiktoken try using own tokeniser
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, this is important - makes it so model can be trained multiple days in a row and keep improving
-
-# TODO instead of using tiktoken try using own tokeniser
 
 # TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
     # https://pytorch.org/tutorials/beginner/saving_loading_models.html
 
-# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader
-# streaming and using that loaded version to do training
-# add randomness
+# TODO update the dataset loading, we can use huggingface to download it first, then split both and update the dataloader - Pytorch util dataloaders 
+    # streaming and using that loaded version to do training
+    # add randomness
 
 # TODO After model training upload it to huggingface, see if inference can be done on it?
 
@@ -36,10 +34,41 @@ import time
 
 # TODO Enable pylint and fix any errors / warnings that I can to make the code more readable
 
-# TODO check his more optimised implementation in another repo and even the .c one for ideas
+# Hyperparameters
 
 @dataclass
-class GPTConfig:
+class TrainerHyperParameters:
+    """
+    Original GPT3 Paper Configuration
+
+
+    Try to maximise the batch size that will fit your GPU without giving you out of memory errors (powers of 2) - closest to 0.5M (2^19) as used by the GPT Paper.
+    To match the paper using the EduFineWeb we wanted to process 10B (10^9) total tokens. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
+    """
+    # Data 
+    
+    total_batch_size: int = 1024
+    batch_size: int = 1
+    token_size: int = 1024 # 2048 in GPT3
+
+    # Training
+    learning_rate: float = 5e-4
+    weight_decay: float = 0.1
+    max_learning_rate: float = 6e-4
+
+    max_steps: int = 19073
+    # Gpt3 paper warms up over 375 million tokens, we have 0.5M (2^19) per batch, 375e6 / 2^19 = 715 warm up steps - this is quite mild and we can warm up far less since we are limited on compute
+    warmup_steps:int  = 150 #715
+
+    # Calculations and assertions
+    min_learning_rate = max_learning_rate * 0.1
+
+    mini_batch_size = batch_size * token_size
+    gradient_accumulation_steps = total_batch_size // (mini_batch_size)
+    assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
+
+@dataclass
+class GPTHyperParameters:
     """
     Original GPT3 Paper Configuration
     block_size: int = 1024
@@ -56,7 +85,7 @@ class GPTConfig:
     number_of_heads: int = 12
     number_of_embeddings: int = 768
 
-class GPT2(nn.Module):
+class GPT3(nn.Module):
 
     def __init__(self, config):
         # Initialising nn.Module base class for proper integration with parameters, gpu support, etc
@@ -65,7 +94,7 @@ class GPT2(nn.Module):
         self.config = config
 
         """
-        GPT2 architecture and naming conventions to follow
+        GPT3 architecture and naming conventions to follow
 
         transformer.wte.weight torch.Size([50257, 768])
         transformer.wpe.weight torch.Size([1024, 768])
@@ -95,7 +124,7 @@ class GPT2(nn.Module):
 
         # We can tie our output weights and our input weights - we do not have to train as many parameters due to the weight sharing
         # We want our two matrices to behave similarly, if we have similarity between two tokens we wnat them to be nearby in the space
-        # Both positons top and bottom by being tied improves performance - this was adopted in attention is all you need and in the GPT2 paper
+        # Both positons top and bottom by being tied improves performance - this was adopted in attention is all you need and in the GPT3 paper
         # This can also be seen in the openai gpt2 model.py
         # This way we set the pointers equal to eachother and we can share them - this is not the most efficient way as we can still not generate the wte embeddings initially
         self.transformer.wte.weight = self.lm_head.weight
@@ -107,7 +136,7 @@ class GPT2(nn.Module):
         self.apply(self._initialise_weights)
 
     def _initialise_weights(self, module):
-        # TODO This is the default implementation if we are following the GPT2 source code - 1/root(number of features) - update it so that it is dynamic
+        # TODO This is the default implementation if we are following the GPT3 source code - 1/root(number of features) - update it so that it is dynamic
         # TODO prevent the double initialisation of the linear and wte tensors
         if isinstance(module, nn.Linear) or isinstance(module, nn.Embedding):
             std = 0.02
@@ -124,14 +153,14 @@ class GPT2(nn.Module):
 
     def forward(self, tokens, targets=None):
         # Tokens of shape (B, T)
-        B, T = tokens.size()
+        batch_size, token_size = tokens.size()
 
         # Make sure that initially our sequence of tokens being forwarded is shorter than our block_size (context length)
-        assert T <= self.config.block_size, f"Cannot forward a sequence of length {T}, the block size is only {self.config.block_size}"
+        assert token_size <= self.config.block_size, f"Cannot forward a sequence of length {token_size}, the block size is only {self.config.block_size}"
 
         # Create initial position tensor of size T, and for efficiency reasons put it onto the cuda device
         # Indices of shape T - should be on the same device - by using tokens.device we prevent mismatches
-        positions = torch.arange(0, T, dtype=torch.long, device = tokens.device)
+        positions = torch.arange(0, token_size, dtype=torch.long, device = tokens.device)
         # Position embeddings will be identical for all rows and thus we can use broadcasting 
         positional_embeddings = self.transformer.wpe(positions)
         token_embeddings = self.transformer.wte(tokens)
@@ -175,8 +204,8 @@ class GPT2(nn.Module):
 
 
         # Initialise our GPT model
-        config = GPTConfig(**configuration)
-        model = GPT2(config)
+        config = GPTHyperParameters(**configuration)
+        model = GPT3(config)
         sd = model.state_dict()
         sd_keys = sd.keys()
         # Discard this buffer for the autoregressive mask
@@ -192,7 +221,7 @@ class GPT2(nn.Module):
         # Discard this buffer for the autoregressive mask
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')]
         sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')] 
-        # Only for GPT2 since it was implemented in Tensorflow - these specific ones are annoyingly transposed so they have to
+        # Only for GPT3 since it was implemented in Tensorflow - these specific ones are annoyingly transposed so they have to
         # be reversed so that they fit with the PyTorch implementation
         transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
 
@@ -313,7 +342,7 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x):
         # Batch size, sequence length and number of embeddings
-        B, T, C = x.size()
+        batch_size, token_size, channel_size = x.size()
 
         # We have the embeddings for the query, key, values all stored together in a batch for efficiency reasons
         qkv = self.c_attn(x)
@@ -323,9 +352,9 @@ class CausalSelfAttention(nn.Module):
         # so that pytorch treats Heads as batches in parallel
         # Keys and querys
         # make sure that the number of heads * head size = to the number of channels/embeddings - nh*hs=C=768 channels in the Transformer
-        k = k.view(B, T, self.number_of_heads, C // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.number_of_heads, C // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.number_of_heads, C // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        k = k.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        q = q.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        v = v.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
 
         # Attention - creating the T x T matrix for all queries and keys
         # 3 methods - another one is by using lower triangular matrix and them summing across dim = 1
@@ -346,17 +375,17 @@ class CausalSelfAttention(nn.Module):
         # y = y @ v
 
         # Reassemble and perform a concatenation
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        y = y.transpose(1, 2).contiguous().view(batch_size, token_size, channel_size)
         y = self.c_proj(y)
         return y
     
 # Creating our dataloader to get batches
 class Dataloader:
     # TODO permute the shards / the documents - or add randomness to the data selected if the dataloader and loading method is changed
-    def __init__(self, B, T, split):
-        self.B = B
-        self.T = T
-        self.batch_size = B*T
+    def __init__(self, batch_size, token_size, split):
+        self.batch_size = batch_size
+        self.token_size = token_size
+        self.total_batch_size = batch_size*token_size
         assert split in {"train", "val"}
 
         # Getting the shards
@@ -384,17 +413,15 @@ class Dataloader:
         return ptt
 
     def next_batch(self):
-        B, T = self.B, self.T
-
         # We want our buffer to include the extra character so that we can easily get our targets using .view()
         # Once you cast any tensor to your device any following tensors that are using .view() will be within that device too
-        dataset_buffer = self.tokens[self.position:self.position + (self.batch_size) + 1]
-        x = dataset_buffer[:-1].view(B, T)
-        targets = dataset_buffer[1:].view(B, T)
+        dataset_buffer = self.tokens[self.position:self.position + (self.total_batch_size) + 1]
+        x = dataset_buffer[:-1].view(self.batch_size, self.token_size)
+        targets = dataset_buffer[1:].view(self.batch_size, self.token_size)
 
         # Update our position within the dataset, unless if that new position does not have enough data for another batch
-        self.position += self.batch_size
-        if self.position + (self.batch_size + 1) > self.total_tokens:
+        self.position += self.total_batch_size
+        if self.position + (self.total_batch_size + 1) > self.total_tokens:
             self.current_shard = (self.current_shard + 1) % self.total_shards
             self.tokens = self.load_tokens(self.shards[self.current_shard])
             self.position = 0
@@ -403,6 +430,7 @@ class Dataloader:
         return x, targets
     
 class Trainer():
+    # TODO big docstring here explaining the most unique options and parameters to pass in - see if you can copy pytorch comments
     def __init__(self, model, optimiser, learning_rate_scheduler, device,
                  max_steps, gradient_accumulation_steps,
                  train_dataloader, evaluation_dataloader,
@@ -415,6 +443,7 @@ class Trainer():
         self.optimiser = optimiser
         self.learning_rate_scheduler = learning_rate_scheduler
         self.device = device
+        self.encoding = tiktoken.get_encoding("gpt2")
 
         # Loop
         self.max_steps = max_steps
@@ -425,6 +454,10 @@ class Trainer():
         self.sampling_string = sampling_string
         self.sequences_to_sample = sequences_to_sample
         self.sampling_length = sampling_length
+        
+        # Create the initial sequences that will be sampled
+        self.sampling_tokens = self.encoding.encode(self.sampling_string)
+        self.sampling_tokens = torch.tensor(self.sampling_tokens).repeat(self.sequences_to_sample, 1).to(self.device)
 
         # Evaluation parameters
         self.evaluate = evaluate
@@ -468,7 +501,7 @@ class Trainer():
 
             # Logging
             time_taken = end_time - start_time
-            tokens_per_second = (train_dataloader.B * train_dataloader.T * gradient_accumulation_steps) / (time_taken)
+            tokens_per_second = (self.train_dataloader.batch_size * self.train_dataloader.token_size * self.gradient_accumulation_steps) / (time_taken)
             predicted_time = int((self.max_steps - step) * time_taken)
             time_left_string = f"{predicted_time//3600}h:{(predicted_time%3600)//60}m:{predicted_time%60}s"
             print(f"Step {step}/{self.max_steps}, Loss: {self.loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second} - Time Remaining: {time_left_string}")
@@ -540,15 +573,13 @@ class Trainer():
         # While the size of the rows that we will keep appending tokens to is smaller than our limit length
         model.eval()
         
-        # Get our prefix tokens given a string
-        tokens = encoding.encode(self.sampling_string)
-        # Repeat our tensor for multiple samples
-        tokens = torch.tensor(tokens).repeat(self.sequences_to_sample, 1)
-        x = tokens.to(device)
-        while x.size(1) < self.sampling_length:
+        # This is the most method for cloning a tensor - we are doing this to prevent having to encode every time we want to sample
+        # https://stackoverflow.com/questions/55266154/pytorch-preferred-way-to-copy-a-tensor
+        sampling_tokens = self.sampling_tokens.detach().clone()
+        while sampling_tokens.size(1) < self.sampling_length:
             # We do not want to cache any tensors, no need to prepare for .backward() which will be more efficient
             with torch.no_grad():
-                logits, _ = model(x)
+                logits, _ = model(sampling_tokens)
                 # Each logit's position predicts the next position, take the last logit in each batch sequence - remember each logit is still of size vocabulary_size
                 logits = logits[:, -1, :]
                 # Now that we have the raw logits we take the softmax
@@ -565,64 +596,47 @@ class Trainer():
                 indices = torch.gather(topk_indices, -1, tokens)
                 # Concatenate the new token index for each sentence with the current sentences x that we have
                 # So we have a tensor of size [B, T] and [B, 1] to a [B, T+1]
-                x = torch.cat((x, indices), dim=1)
+                sampling_tokens = torch.cat((sampling_tokens, indices), dim=1)
         
         for i in range(self.sequences_to_sample):
             try:
-                tokens = x[i, :self.sampling_length].tolist()
-                decoded = encoding.decode(tokens)
+                tokens = sampling_tokens[i, :self.sampling_length].tolist()
+                decoded = self.encoding.decode(tokens)
                 print(decoded)
             except Exception as decoding_exception:
                 print(decoding_exception)
 
+
+
 # Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
+# torch.backend.mps.is_available() - used for apple silicone mps
 device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
-# torch.backend.mps.is_available() - apple silicone mps can be better than a cpu
 
 # Choose between the default or pretrained model
-# model = GPT2.from_pretrained("gpt2")
-model = GPT2(GPTConfig())
+# model = GPT3.from_pretrained("gpt2")
+model = GPT3(GPTHyperParameters())
 model.to(device)
 
-# Try to maximise the batch size that will fit your GPU without giving you out of memory errors (powers of 2) - closest to 0.5M (2^19)
-total_batch_size = 2048 # 524288 
-B = 1
-T = 1024 # 2048 in GPT3
-mini_batch_size = B * T
+hyperparameters = TrainerHyperParameters()
 
-assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
-# We want to get roughly a 0.5M batch size - so we can simulate a 0.5M batch size using gradient accummulation we just have to run for longer
-gradient_accumulation_steps = total_batch_size // (mini_batch_size)
-train_dataloader = Dataloader(B=B, T=T, split="train")
-evaluation_dataloader = Dataloader(B=B, T=T, split="val")
-
-encoding = tiktoken.get_encoding("gpt2")
-
-# TODO when all of these are organised go thorugh teh paper and make these calculations automatic e.g 10% min_lr (already is done) and others
-# we want 10^9 - 10B total tokens processed which is what we have. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
-max_learning_rate = 6e-4
-min_learning_rate_factor = 0.1
-min_learning_rate = max_learning_rate * min_learning_rate_factor
-# TODO calculate the number of steps needed to process 10B total tokens or however long the dataset is - provide a parameter for how many tokens to process
-max_steps = 19073
-# Gpt3 paper warms up over 375 million tokens, we have 0.5M per batch so we do this over 715 steps, 375e6 / 2^19 = 715 warm up steps
-# 715 matches exactly but this is quite mild and we can probably start far earlier since we are limited on compute
-warmup_steps = 150 #715
+# Dataloader initialisation
+train_dataloader = Dataloader(batch_size=hyperparameters.batch_size, token_size=hyperparameters.token_size, split="train")
+evaluation_dataloader = Dataloader(batch_size=hyperparameters.batch_size, token_size=hyperparameters.token_size, split="val")
 
 # Optimiser and Schedulers
 # AdamW works well but we can try plenty of other ones - keeps momentum buffers (similar to RMSProp) this speeds up optimisation
 # Fused by default is set to False to provide adequate bake in time as it is relatively new - Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
 # GPT3 used Adam with beta_1 = 0.9, beta_2 = 0.95 and e = 1e-8
-optimiser = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=0.1)
+optimiser = torch.optim.AdamW(model.parameters(), lr=hyperparameters.learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=hyperparameters.weight_decay)
+warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=hyperparameters.max_steps)
+cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, hyperparameters.max_steps - hyperparameters.warmup_steps, hyperparameters.min_learning_rate)
+learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[hyperparameters.warmup_steps])
 
-warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=warmup_steps)
-cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, max_steps - warmup_steps, min_learning_rate)
-learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps])
-
+# Trainer initialisation
 trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
-                  max_steps, gradient_accumulation_steps, 
+                  hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
                   train_dataloader, evaluation_dataloader,
                   torch_compile=False)
 trainer.start()
