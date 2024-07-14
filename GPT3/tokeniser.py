@@ -1,3 +1,5 @@
+from tqdm import tqdm
+
 # TODO figure out how to train the tokeniser
     # Should probably find a better dataset - the larger thee vocabulary the better
     # TODO separate the dataloader from the other class as and use it to train the tokeniser
@@ -9,8 +11,9 @@
 class Tokeniser:
     # TODO rename everything and organise it all to make sense, comment everything too
 
-    def __init__(self, vocabulary_size=300):
-        self.tokens = list("this is diogo diogo diogo simply a test diogo of unicode diogo encoding in python, the longer the string the better we can test our bit pair algorithm - notice the amount of 'the' used. GPT Generated Sentece for testing - The quick brown fox jumps over the lazy dog! こんにちは世界! Добро пожаловать! ¡Hola, mundo! 你好，世界! Bonjour le monde! 안녕하세요 세계! Γειά σου Κόσμε! שלום עולם! नमस्ते दुनिया! 🌍🚀💻✨ नमस्ते, मेरा नाम है GPT-4. This is a long sentence designed to test a tokenizer's capabilities. 一只敏捷的棕色狐狸跳过了懒狗! हरिओम, यहां हम विभिन्न भाषाओं और लिपियों का प्रयोग कर रहे हैं। Lorem ipsum dolor sit amet, consectetur adipiscing elit. カタカナとひらがなも使います。 Моя цель — проверить токенизацию. ¿Puedes entender este texto? 😊✨👾🎉 Python is great for scripting! எங்கள் விஞ்ஞானிகள் நியூயார்க்கில் உள்ளனர். الطقس جميل اليوم! Будем рады видеть вас снова. ここに多くの異なる文字があります。 Это предложение становится длиннее и длиннее. 我们正在测试各种字符。 Δοκιμάζουμε διαφορετικούς χαρακτήρες. הקפיצה המהירה של השועל החום מעל הכלב העצלן! Всем привет! 🌟🌐📚👩‍💻🧑‍🚀🎨 βελτιώνουμε συνεχώς το μοντέλο μας. ¿Qué tal tu día? မင်္ဂလာပါ။ हमने बहुत सारी भाषाएँ शामिल की हैं। ताजमहल भारत में है। 🚗🚀📱💡💬🌈🙌 Этот текст продолжает расти. Qu'est-ce que vous en pensez? 今日はどうですか? Aloha ʻāina! फिर मिलेंगे। 🏖️🏔️🗽🕌🏯 🚴‍♂️🏊‍♀️⛷️🏋️‍♀️🤹‍♂️".encode("utf-8"))
+    def __init__(self, vocabulary_size=50256):
+        with open("../Pre Train Datasets/small_shakespeare.txt", "r") as text_file:
+            self.tokens = text_file.read()
         self.initialise()
 
         # Hyperparameters
@@ -20,7 +23,7 @@ class Tokeniser:
         self.num_merges = self.vocabulary_size - 256
 
     def initialise(self):
-        self.special_tokens = {'<|endoftext|>': 50257}
+        self._special_tokens = {'<|endoftext|>': 50257}
         self.vocabulary = {idx: bytes([idx]) for idx in range(256)}
         self.merges = {}
 
@@ -28,7 +31,7 @@ class Tokeniser:
         # We copy the original list here so that we don't destroy it
         chars = list(self.tokens)
 
-        for merge_count in range(self.num_merges):
+        for merge_count in tqdm(range(self.num_merges)):
             pairs = self.get_pairs(chars)
             max_pair = self.get_top_pair(pairs)
 
@@ -66,11 +69,13 @@ class Tokeniser:
         return text 
 
     def decode(self, ids):
+        # TODO If it does not exist we get an error, but we should be able to skip it and ignore it or put in a special character <null>
         tokens = b"".join(self.vocabulary[idx] for idx in ids)
         text = tokens.decode("utf-8")
         return text
 
     def encode(self, text):
+        # TODO understand this function
         # Get a list of integers from the utf encoding merge based on our trained merges vocabulary
         tokens = list(text.encode("utf-8"))
         # Now we have to implement the byte pair algorithm - since we are doing pairings we have to make sure that the lenght of tokens is at least 2
@@ -116,17 +121,20 @@ class Tokeniser:
         vocab = {idx: bytes([idx]) for idx in range(256)}
         for (p0, p1), idx in self.merges.items():
             vocab[idx] = vocab[p0] + vocab[p1]
-        for special, idx in self.special_tokens.items():
+        for special, idx in self._special_tokens.items():
             vocab[idx] = special.encode("utf-8")
         return vocab
-    
+
+# If you wish to train the tokeniser uncomment this code
+# The byte pair algorithm will be finished and the vocabulary file will be saved
 tokeniser = Tokeniser()
 tokeniser.byte_pair_algorithm()
-tokeniser.save("first_test")
+tokeniser.save("shakespeare_tokeniser")
 
-second_tokeniser = Tokeniser()
-second_tokeniser.load("first_test.tokeniser")
-encoding = second_tokeniser.encode("Hello I am Diogo, diogo!")
-print(encoding)
-print(second_tokeniser.decode(encoding))
+# Here we then test whether loading a new tokeniser with that vocabulary file works
+# second_tokeniser = Tokeniser()
+# second_tokeniser.load("shakespeare_tokeniser.tokeniser")
+# encoding = second_tokeniser.encode("Hello I am thou art, diogo!")
+# print(encoding)
+# print(second_tokeniser.decode(encoding))
 
