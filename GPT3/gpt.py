@@ -238,7 +238,7 @@ class CausalSelfAttention(nn.Module):
         # We have the embeddings for the query, key, values all stored together in a batch for efficiency reasons
         qkv = self.c_attn(x)
         q, k, v = qkv.split(self.number_of_embeddings, dim=2)
-
+        
         # We are making the number of Heads into a batch dimension - it will apply operations on all in parallel
         # so that pytorch treats Heads as batches in parallel
         # Keys and querys

@@ -140,3 +140,12 @@ if __name__ == "__main__":
     # print(encoding)
     # print(second_tokeniser.decode(encoding))
 
+"""
+Cell In[1], line 47, in Tokeniser.byte_pair_algorithm(self)
+     44 # Adding to the original 256 token dictionary
+     45 # Then all the merges we had we take the new index and put it back into the two values merged 
+     46 for (p0, p1), idx in self.merges.items():
+---> 47     self.vocabulary[idx] = self.vocabulary[p0] + self.vocabulary[p1]
+
+KeyError: 'e'
+"""

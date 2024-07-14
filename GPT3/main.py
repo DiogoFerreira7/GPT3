@@ -9,10 +9,9 @@ from tokeniser import Tokeniser
 
 import tiktoken
 
-# TODO go thorugh andrejs checkpoint saving and checkpoint resuming, checkpointing and uploading to huggingface
-# TODO After model training upload it to huggingface, see if inference can be done on it?
 # TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
     # https://pytorch.org/tutorials/beginner/saving_loading_models.html
+# TODO After model training upload it to huggingface, see if inference can be done on it?
 
 # TODO instead of using tiktoken try using own tokeniser
 
