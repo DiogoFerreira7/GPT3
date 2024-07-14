@@ -54,3 +54,6 @@ class Dataloader:
             self.position = 0
 
         return x, targets
+    
+if __name__ == "__main__":
+    pass

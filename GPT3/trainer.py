@@ -197,3 +197,6 @@ class Trainer():
                 validation_loss_accumulation += loss.detach()
             
         print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
+
+if __name__ == "__main__":
+    pass

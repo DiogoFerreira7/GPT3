@@ -106,60 +106,34 @@ class GPT3(nn.Module):
 
         return logits, loss
 
-    # Make it so that the model does not have to be initialised to get a pretrained version
     @classmethod
-    def from_pretrained(cls, model_type):
+    def from_pretrained(cls, model_type, config):
         print("Loading pretrained weights...")
 
-        # TODO update this so that it just loads the GPT3 model
-        configuration = {
-            "number_of_layers": 12, 
-            "number_of_heads": 12, 
-            "number_of_embeddings": 768,
-            # Below are constant for all models
-            "vocabulary_size": 50257,
-            "block_size": 1024
-            }
+        # TODO if gpt2 model_type then we load this one, if a file for state dict then we load that one
 
-        # Initialise our GPT model
-        config = GPTHyperParameters(**configuration)
+        # The GPT original model uses Conv1D layers instead of Linear
+        # However given a kernel size of 1 they are exactly the same and Linear is faster
+        # So we load the weights which have to be transposed and now they will work with our linear layers
+        keys_to_transpose = [
+            'attn.c_proj.weight',
+            'attn.c_attn.weight',
+            'mlp.c_fc.weight',
+            'mlp.c_proj.weight',
+        ]
+
         model = GPT3(config)
-        sd = model.state_dict()
-        sd_keys = sd.keys()
-        # Discard this buffer for the autoregressive mask
-        sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] 
-
-        # Initialise a HuggingFace model
         model_hf = GPT2LMHeadModel.from_pretrained(model_type)
-        sd_hf = model_hf.state_dict()
+        state_dict = model.state_dict()
+        state_dict_hf = model_hf.state_dict()
 
-        # copy while ensuring all of the parameters are aligned and match in names and shapes
-        sd_keys_hf = sd_hf.keys()
-
-        # Discard this buffer for the autoregressive mask
-        sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')]
-        sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')] 
-        # Only for GPT3 since it was implemented in Tensorflow - these specific ones are annoyingly transposed so they have to
-        # be reversed so that they fit with the PyTorch implementation
-        transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
-
-        # TODO if importing over the GPT3 ones then we might not need this we can just copy over the values without any checks
-        # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
-        # this means that we have to transpose these weights when we import them
-        assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-        for k in sd_keys_hf:
-            if any(k.endswith(w) for w in transposed):
-                # special treatment for the Conv1D weights we need to transpose
-                assert sd_hf[k].shape[::-1] == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].t())
+        # Copy over all of the tensors that we load from the pretrained GPT2
+        for tensor in model.state_dict():
+            if any(k in tensor for k in keys_to_transpose):
+                state_dict[tensor].copy_(state_dict_hf[tensor].t())
             else:
-                # vanilla copy over the other parameters
-                assert sd_hf[k].shape == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
+                state_dict[tensor].copy_(state_dict_hf[tensor])
 
-        # Return a model with the values copied over
         return model
 
 
@@ -295,3 +269,6 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(batch_size, token_size, channel_size)
         y = self.c_proj(y)
         return y
+
+if __name__ == "__main__":
+    pass    

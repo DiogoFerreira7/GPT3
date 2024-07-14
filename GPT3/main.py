@@ -5,11 +5,9 @@ from dataclasses import dataclass
 from dataloader import Dataloader
 from gpt import GPT3
 from trainer import Trainer
-# from tokeniser import Tokeniser
+from tokeniser import Tokeniser
 
 import tiktoken
-
-# TODO add the __name__ == "__main__" so that the rest of the code does not run unless we choose to run that file
 
 # TODO go thorugh andrejs checkpoint saving and checkpoint resuming, checkpointing and uploading to huggingface
 # TODO After model training upload it to huggingface, see if inference can be done on it?
@@ -87,8 +85,9 @@ if torch.cuda.is_available():
     device = "cuda"
 
 # Choose between the default or pretrained model
-# model = GPT3.from_pretrained("gpt2")
-model = GPT3(GPTHyperParameters())
+configuration = GPTHyperParameters()
+model = GPT3.from_pretrained("gpt2", configuration)
+# model = GPT3(configuration)
 model.to(device)
 
 hyperparameters = TrainerHyperParameters()
@@ -119,5 +118,5 @@ trainer = Trainer(model, optimiser, learning_rate_scheduler, device,
                   hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
                   train_dataloader, evaluation_dataloader, tokeniser=tokeniser,
                   torch_compile=False,
-                  train=True, evaluate=True, sample=True)
+                  train=False, evaluate=False, sample=True)
 trainer.start()

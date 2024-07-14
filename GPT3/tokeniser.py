@@ -125,16 +125,18 @@ class Tokeniser:
             vocab[idx] = special.encode("utf-8")
         return vocab
 
-# If you wish to train the tokeniser uncomment this code
-# The byte pair algorithm will be finished and the vocabulary file will be saved
-tokeniser = Tokeniser()
-tokeniser.byte_pair_algorithm()
-tokeniser.save("shakespeare_tokeniser")
 
-# Here we then test whether loading a new tokeniser with that vocabulary file works
-# second_tokeniser = Tokeniser()
-# second_tokeniser.load("shakespeare_tokeniser.tokeniser")
-# encoding = second_tokeniser.encode("Hello I am thou art, diogo!")
-# print(encoding)
-# print(second_tokeniser.decode(encoding))
+if __name__ == "__main__":
+    # If you wish to train the tokeniser uncomment this code
+    # The byte pair algorithm will be finished and the vocabulary file will be saved
+    tokeniser = Tokeniser()
+    tokeniser.byte_pair_algorithm()
+    tokeniser.save("shakespeare_tokeniser")
+
+    # Here we then test whether loading a new tokeniser with that vocabulary file works
+    # second_tokeniser = Tokeniser()
+    # second_tokeniser.load("shakespeare_tokeniser.tokeniser")
+    # encoding = second_tokeniser.encode("Hello I am thou art, diogo!")
+    # print(encoding)
+    # print(second_tokeniser.decode(encoding))
 
