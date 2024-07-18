@@ -13,6 +13,7 @@ import tiktoken
     # get paper and write down default values - set them as defaults
 
 # TODO clean up all implementations make sure commented correctly too
+
 # Hyperparameters
 @dataclass
 class TrainerHyperParameters:

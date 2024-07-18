@@ -11,26 +11,24 @@ This project follows the principle of iteratively implementing small building bl
 - Tokeniser
 - GPT3
 
-<hr>
+## How to
 
-### How to
-
-#### Loading the pretrained model weights
+### Loading the pretrained model weights
 
 Changes to make in the code - what values to put in according to the paper
 
-#### Understanding the tokeniser
+### Understanding the tokeniser
 
 This [tokenisation website](https://tiktokenizer.vercel.app), examples of how the tokeniser works
 
-#### Datasets
+### Datasets
 
 Here is an awesome repository you can use if you want to train your own model on a different dataset - make sure you choose Pre Training datasets for this model (PT) https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file
 
 
 https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1
 
-#### Training your own model
+### Training your own model
 
 Calculations
 Max steps
@@ -42,16 +40,15 @@ The original paper has quite conservative parameters especially warm up and lear
 By default torch.compile is on, I have it turned off since I am using Pytorch 3.12 which is not currently supported, but I would highly recommend using a supported version
 RuntimeError: Dynamo is not supported on Python 3.12+
 
-#### Evaluating
+### Evaluating
 
 Show how to turn on wandb_training
 Show possible graphs from my personal training
 
 make sure to wandb login - give tutorail link here
 
-<hr>
 
-### Papers
+## Papers
 
 The following papers were read and used to match the GPT3 implementation to its true origin, understand the separate components and optimise the model
 
@@ -63,9 +60,7 @@ gpt 3 / 2
 
 cuda paper explaining bfloat16
 
-<hr>
-
-### Changes & Optimisations
+## Changes & Optimisations
 
 A lot of the following optimisations took advantage of kernel fusion, I found [this to be an interesting read](https://stackoverflow.com/questions/53305830/cuda-how-does-kernel-fusion-improve-performance-on-memory-bound-applications-on) and an easy way to understand it
 
@@ -89,9 +84,7 @@ A lot of the following optimisations took advantage of kernel fusion, I found [t
 - Using FlashAttention which torch.compile
 - Gradient accumulation normalisation changed from a per mini batch basis, it was wasting compute by normalising after every gradient calculation
 
-<hr>
-
-### Future ideas & Improvements
+## Future ideas & Improvements
 
 1. Potential improvements includes:
 [DDP (Distributed Data Parallel)](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html#:~:text=DistributedDataParallel%20(DDP)%20implements%20data%20parallelism,collective%20communications%20in%20the%20torch.).
@@ -110,9 +103,9 @@ Considerations for this improvement:
 
 <hr>
 
-### Example Outputs
+## Example Outputs
 
-#### Randomly initialised weights
+### Randomly initialised weights
 
 - I am a doctor, let me teach you aboutVIS speaksposition Fund Pulitzer Recently astronautsumbnails tutorialFloat loneliness shift358 Woods calibr Doyleiven sedanzengroups licking Auschwitz mindful Tripoli 125
 
@@ -122,7 +115,7 @@ Considerations for this improvement:
 
 - I am a doctor, let me teach you about Conor acted=-=-=-=- exchanging scamsadier EngelsCar �dem carrying Puzzle productions439 brow trainthro insert Audio informingCentralruly chauscience 2000
 
-#### Pretrained GPT2 Weights
+### Pretrained GPT2 Weights
 
 - I am a doctor, let me teach you about the importance of mental health and family care," said the speech. "When you are an older man with mental illness, the
 
@@ -132,21 +125,18 @@ Considerations for this improvement:
 
 - I am a doctor, let me teach you about the brain."When I said "no", he turned to face me without looking me right into his eyes.
 
-#### Trained GPT Model
+### Trained GPT Model
 
-#### Results
+### Results
 
-<hr>
-
-### Common Problems & Fixes
+## Common Problems & Fixes
 
 Making sure cuda is installed, you can use torch.cuda.is_available(). If false is returned the following resources were quite useful for me in diagnosing those errors.
 - [Comprehensive StackOverflow Guide](https://stackoverflow.com/questions/60987997/why-torch-cuda-is-available-returns-false-even-after-installing-pytorch-with)
 - [Nvidia Cuda ToolKit Download](https://developer.nvidia.com/cuda-downloads)
 
-<hr>
 
-### Credits
+## Credits
 
 OpenAI - [GPT-2 Tensorflow Implementation](https://github.com/openai/gpt-2/blob/master/src/model.py)
 
