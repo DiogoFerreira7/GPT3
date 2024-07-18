@@ -1,0 +1,53 @@
+{
+    "os": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "heartbeatAt": "2024-07-18T14:18:36.912822",
+    "startedAt": "2024-07-18T14:18:36.297819",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "c:\\Users\\diogo\\Desktop\\VS\\ML\\NNZeroToHero\\GPT\\GPT3\\main.py",
+    "codePathLocal": "GPT3\\main.py",
+    "codePath": "GPT3\\main.py",
+    "git": {
+        "remote": "https://github.com/DiogoFerreira7/GPT3",
+        "commit": "8b64222688b6bb1a3761050db2cc45dcf9fc99fe"
+    },
+    "email": "psydf5@nottingham.ac.uk",
+    "root": "C:/Users/diogo/Desktop/VS/ML/NNZeroToHero/GPT",
+    "host": "Diogo",
+    "username": "Diogo",
+    "executable": "C:\\Users\\diogo\\Desktop\\VS\\ML\\NNZeroToHero\\GPT\\.venv\\Scripts\\python.exe",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "cpu_freq": {
+        "current": 2592.0,
+        "min": 0.0,
+        "max": 2592.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2592.0,
+            "min": 0.0,
+            "max": 2592.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 936.0615196228027,
+            "used": 704.3841667175293
+        }
+    },
+    "gpu": "NVIDIA GeForce GTX 1650 Ti",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce GTX 1650 Ti",
+            "memory_total": 4294967296
+        }
+    ],
+    "memory": {
+        "total": 15.751651763916016
+    }
+}

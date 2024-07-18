@@ -1,0 +1,1 @@
+{"training_loss": 10.07562255859375, "validation_loss": 10.909063339233398, "learning_rate": 5.8654054198116716e-05, "tokens_per_second": 580.5214441456062, "time_per_batch": 3.527862787246704, "_timestamp": 1721310290.3670158, "_runtime": 50.390477895736694, "_step": 9, "_wandb": {"runtime": 49}}

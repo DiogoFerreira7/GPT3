@@ -6,25 +6,13 @@ from dataloader import Dataloader
 from gpt import GPT3
 from trainer import Trainer
 from tokeniser import Tokeniser
-
 import tiktoken
-
-# TODO use torch.save to allow saving to disk - we can keep track of the best model yet and keep that one to save and the optionally save it to huggingface
-    # https://pytorch.org/tutorials/beginner/saving_loading_models.html
-# TODO After model training upload it to huggingface, see if inference can be done on it?
-
-# TODO instead of using tiktoken try using own tokeniser
 
 # TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
     # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
     # get paper and write down default values - set them as defaults
 
-# TODO Try EleutherAI for implementing custom models
-# TODO https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/interface.md#external-library-usage
-    # https://github.com/pytorch-labs/gpt-fast - this implementation has it so might be useful seeing how it works
-
-# TODO Enable pylint and fix any errors / warnings that I can to make the code more readable
-
+# TODO clean up all implementations make sure commented correctly too
 # Hyperparameters
 @dataclass
 class TrainerHyperParameters:
@@ -35,7 +23,7 @@ class TrainerHyperParameters:
     To match the paper using the EduFineWeb we wanted to process 10B (10^9) total tokens. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
     """
     # Data 
-    total_batch_size: int = 16384
+    total_batch_size: int = 2048 # 16384
     batch_size: int = 1
     token_size: int = 1024 # 2048 in GPT3
 
@@ -44,9 +32,9 @@ class TrainerHyperParameters:
     weight_decay: float = 0.1
     max_learning_rate: float = 6e-4
 
-    max_steps: int = 19073
-    # Gpt3 paper warms up over 375 million tokens, we have 0.5M (2^19) per batch, 375e6 / 2^19 = 715 warm up steps - this is quite mild and we can warm up far less since we are limited on compute
-    warmup_steps:int  = 150 #715
+    max_steps: int = 50
+    # GPT3 paper warms up over 375 million tokens, we have 0.5M (2^19) per batch, 375e6 / 2^19 = 715 warm up steps - this is quite mild and we can warm up far less since we are limited on compute
+    warmup_steps: int = 10 #715
 
     # Calculations and assertions
     min_learning_rate = max_learning_rate * 0.1
@@ -58,7 +46,6 @@ class TrainerHyperParameters:
     assert total_batch_size % (mini_batch_size) == 0, "Total batch size is not divisible by the mini batches (B * T)"
     assert warmup_steps < max_steps, "Warm up steps must be less than the max steps you intend to train for"
 
-# TODO check if there are other hyper parameters i can add - andrejs implementation had plenty
 @dataclass
 class GPTHyperParameters:
     """
@@ -83,25 +70,27 @@ device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
 
+save_path = "GPT3/State Dictionaries/GPT.model"
 # Choose between the default or pretrained model
 configuration = GPTHyperParameters()
-model = GPT3.from_pretrained("gpt2", configuration)
-# model = GPT3(configuration)
+
+# Pre trained
+# model = GPT3.from_pretrained("gpt2", configuration)
+# model = GPT3.from_pretrained(save_path, configuration)
+
+# Brand new
+model = GPT3(configuration)
+
 model.to(device)
 
 hyperparameters = TrainerHyperParameters()
 
 # Dataloader & Tokeniser initialisation
-# TODO vocabulary size hyper parameter and token vocabulary file
-# TODO maybe see if i can load one instead of training) - open ai has the vocabulary / merges available
-# TODO pass in the name of the file to load otherwise leave empty and it will train
 # tokeniser = Tokeniser()
-# tokeniser.load("first_test.tokeniser")
-
+# tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")
 tokeniser = tiktoken.get_encoding("gpt2")
+
 train_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "train", tokeniser)
-# TODO this evaluation dataloader is not used (double loading massive file) - we can just try to load the small evaluation file instead
-    # maybe just make it so it will load a shuffled random sample
 evaluation_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "val", tokeniser)
 
 # Optimiser and Schedulers
@@ -116,6 +105,8 @@ learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, sched
 trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
                   hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
                   train_dataloader, evaluation_dataloader, tokeniser=tokeniser,
-                  torch_compile=False,
-                  train=False, evaluate=False, sample=True)
+                  torch_compile=True,
+                  train=True, evaluate=True, sample=True,
+                  save=False, save_path=save_path,
+                  wandb_logging=True)
 trainer.start()

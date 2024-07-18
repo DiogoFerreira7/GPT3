@@ -1,0 +1,23 @@
+  0%|                                                                                                                                                                                                    | 0/2 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\main.py", line 121, in <module>
+    wandb_logging=True)
+    ^^^^^^^^^^^^^^^
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\trainer.py", line 119, in start
+    self.training()
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\trainer.py", line 179, in training
+    _, loss = self.model(x, targets)
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\gpt.py", line 90, in forward
+    x = positional_embeddings + token_embeddings
+        ~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.

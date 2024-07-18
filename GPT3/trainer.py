@@ -2,8 +2,9 @@ import torch
 from torch.nn import functional as F
 
 import time
-import tiktoken
 from tqdm import tqdm
+
+import wandb
 
 import pyo3_runtime
 
@@ -29,6 +30,8 @@ class Trainer():
                  sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=45, steps_per_sample=100,
                  evaluate=True, steps_per_evaluation=100,
                  torch_compile=True, matmul_precision="high",
+                 save=True, model_name="GPT", save_path="GPT3/State Dictionaries",
+                 wandb_logging=False
                 ):
         self.model = model
         self.optimiser = optimiser
@@ -39,6 +42,11 @@ class Trainer():
         # Loop
         self.max_steps = max_steps
         self.train = train
+
+        # Model saving parameters
+        self.save = save
+        self.model_name = model_name
+        self.save_path = save_path
         
         # Sampling parameters
         self.sample = sample
@@ -65,7 +73,8 @@ class Trainer():
         self.evaluation_dataloader = evaluation_dataloader
 
         # Logging variables
-        self.loss = 0
+        self.training_loss = None
+        self.validation_loss = None
 
         # Optimisations
         # There is no good reason to not use torch.compile in general, speed up is mainly from reducing python overhead and GPU read and writing
@@ -79,6 +88,27 @@ class Trainer():
         # A lot of the workloads in training as memory bound and thus even though we are supposed to get an 8x speed up it is bottlenecked and memory bound
         # Note: Ampere / Turing architectures are required respectively
         torch.set_float32_matmul_precision(matmul_precision)
+
+        self.wandb_logging = wandb_logging
+        if self.wandb_logging:
+            self.initialise_wandb()
+
+    def initialise_wandb(self):
+        self.run = wandb.init(
+            project="gpt-training",
+            
+            # Track hyperparameters
+            config={
+                "learning_rate": self.learning_rate_scheduler.get_last_lr()[0],
+                "max_steps": self.max_steps,
+                "gradient_accumulation_steps": self.gradient_accumulation_steps,
+                "max_norm": 1.0,
+                "sampling_string": "I am a doctor, let me teach you about", 
+                "steps_per_evaluation": 100,
+                "torch_compile": True, 
+                "matmul_precision": "high",
+            },
+        )
 
     def start(self):
         for step in range(self.max_steps):
@@ -96,19 +126,40 @@ class Trainer():
                 tokens_per_second = (self.train_dataloader.batch_size * self.train_dataloader.token_size * self.gradient_accumulation_steps) / (time_taken)
                 predicted_time = int((self.max_steps - step) * time_taken)
                 time_left_string = f"{predicted_time//3600}h:{(predicted_time%3600)//60}m:{predicted_time%60}s"
-                print(f"Step {step}/{self.max_steps}, Loss: {self.loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second} - Time Remaining: {time_left_string}")
+                
+                print(f"Step {step}/{self.max_steps}, Loss: {self.training_loss} - LR: {self.learning_rate_scheduler.get_last_lr()[0]:.9f} - Time taken: {time_taken*1000} - Tokens/second: {tokens_per_second} - Time Remaining: {time_left_string}")
 
-                # Evaluation
-                if self.evaluate:
-                    if step % self.steps_per_evaluation == 0:
-                        print("\nEvaluating")
-                        self.evaluation()
+                if self.wandb_logging:
+                    wandb.log({
+                        "training_loss": self.training_loss,
+                        "validation_loss": self.validation_loss,
+                        "learning_rate": self.learning_rate_scheduler.get_last_lr()[0],
+                        "tokens_per_second": tokens_per_second,
+                        "time_per_batch": time_taken,
+                    })
+
+            # Evaluation
+            if self.evaluate:
+                if step % self.steps_per_evaluation == 0:
+                    print("\nEvaluating")
+                    self.evaluation()
         
             # Sampling
             if self.sample:                    
                 if step % self.steps_per_sample == 0:
                     print("\nSampling")
                     self.sampling()
+
+        if self.save:
+            self.save_model()
+        
+        if self.wandb_logging:
+            self.run.finish()
+
+    def save_model(self):
+        print("Saving {self.model_name} to {self.save_path}")
+        self.model.save_pretrained(self.model_name, self.save_path)
+        print("Save successful")
 
     def training(self):
         self.model.train()
@@ -133,7 +184,7 @@ class Trainer():
             # Gradients will accumulate
             loss.backward()
 
-        self.loss = loss_accumulation.item()
+        self.training_loss = loss_accumulation.item()
 
         # Clipping gradients to have a maximum norm - calculates a global norm which makes sure that its length is no more than 1.0
         # Sometimes we can get unlucky batches and thus get very high loss which will prevent the model from having extremely large gradients
@@ -174,12 +225,16 @@ class Trainer():
                 sampling_tokens = torch.cat((sampling_tokens, indices), dim=1)
 
         for i in range(self.sequences_to_sample):
-            try:
-                tokens = sampling_tokens[i, :self.sampling_length].tolist()
-                decoded = self.tokeniser.decode(tokens)
-                print(decoded)
-            except pyo3_runtime.PanicException as decoding_exception:
-                print(decoding_exception)
+            # This error handling is now fixed and shouldn't be needed
+            # try:
+            #     tokens = sampling_tokens[i, :self.sampling_length].tolist()
+            #     decoded = self.tokeniser.decode(tokens)
+            #     print(decoded)
+            # except pyo3_runtime.PanicException as decoding_exception:
+            #     print(decoding_exception)
+            tokens = sampling_tokens[i, :self.sampling_length].tolist()
+            decoded = self.tokeniser.decode(tokens)
+            print(decoded)
 
     def evaluation(self):
         self.model.eval()
@@ -195,7 +250,8 @@ class Trainer():
                     _, loss = self.model(x, targets)
                 loss = loss / validation_loss_steps
                 validation_loss_accumulation += loss.detach()
-            
+        
+        self.validation_loss = validation_loss_accumulation.item()
         print(f"Validation Loss: {validation_loss_accumulation.item():.5f}")
 
 if __name__ == "__main__":

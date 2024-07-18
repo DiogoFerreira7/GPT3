@@ -44,7 +44,10 @@ RuntimeError: Dynamo is not supported on Python 3.12+
 
 #### Evaluating
 
-How to use the evaluation methods
+Show how to turn on wandb_training
+Show possible graphs from my personal training
+
+make sure to wandb login - give tutorail link here
 
 <hr>
 
@@ -102,6 +105,8 @@ Considerations for this improvement:
 2. Once pre trained it would be quite interesting to further take the model through fine-tuning stages that would allow it to interact in a conversational manner and being able to use RLHF. [OpenAI guidance is here](https://platform.openai.com/docs/guides/fine-tuning)
 
 3. Consider using batch size scheduling like as used by the paper, potentially done by reinitialising the dataloader
+
+4. Try implementing KV-Caching for better model inference
 
 <hr>
 

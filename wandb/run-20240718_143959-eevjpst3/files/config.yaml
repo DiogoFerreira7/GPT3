@@ -1,0 +1,60 @@
+wandb_version: 1
+
+learning_rate:
+  desc: null
+  value: 5.0e-06
+max_steps:
+  desc: null
+  value: 10
+gradient_accumulation_steps:
+  desc: null
+  value: 2
+max_norm:
+  desc: null
+  value: 1.0
+sampling_string:
+  desc: null
+  value: I am a doctor, let me teach you about
+steps_per_evaluation:
+  desc: null
+  value: 100
+torch_compile:
+  desc: null
+  value: true
+matmul_precision:
+  desc: null
+  value: high
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.2
+    cli_version: 0.17.4
+    framework: huggingface
+    huggingface_version: 4.42.3
+    is_jupyter_run: false
+    is_kaggle_kernel: true
+    start_time: 1721309999
+    t:
+      1:
+      - 1
+      - 11
+      - 49
+      - 51
+      - 55
+      2:
+      - 1
+      - 11
+      - 49
+      - 51
+      - 55
+      3:
+      - 16
+      - 23
+      4: 3.12.2
+      5: 0.17.4
+      6: 4.42.3
+      8:
+      - 2
+      - 3
+      - 5
+      13: windows-amd64

@@ -1,19 +1,11 @@
 from tqdm import tqdm
 
-# TODO figure out how to train the tokeniser
-    # Should probably find a better dataset - the larger thee vocabulary the better
-    # TODO separate the dataloader from the other class as and use it to train the tokeniser
-
-# TODO Create tokeniser class that can be imported and can load and save the values trained for it
-    # This can be good practice for loading and storing values
-    # If need be do the loading and storing for the model first and then tokeniser
-
 class Tokeniser:
-    # TODO rename everything and organise it all to make sense, comment everything too
-
+    
     def __init__(self, vocabulary_size=50256):
-        with open("../Pre Train Datasets/small_shakespeare.txt", "r") as text_file:
-            self.tokens = text_file.read()
+        with open("Pre Train Datasets/small_shakespeare.txt", "r") as text_file:
+            self.tokens = text_file.read().encode("utf-8")
+        # self.tokens = list("this is simply a test of unicode encoding in python, the longer the string the better we can test our bit pair algorithm - notice the amount of 'the' used. GPT Generated Sentece for testing - The quick brown fox jumps over the lazy dog! こんにちは世界! Добро пожаловать! ¡Hola, mundo! 你好，世界! Bonjour le monde! 안녕하세요 세계! Γειά σου Κόσμε! שלום עולם! नमस्ते दुनिया! 🌍🚀💻✨ नमस्ते, मेरा नाम है GPT-4. This is a long sentence designed to test a tokenizer's capabilities. 一只敏捷的棕色狐狸跳过了懒狗! हरिओम, यहां हम विभिन्न भाषाओं और लिपियों का प्रयोग कर रहे हैं। Lorem ipsum dolor sit amet, consectetur adipiscing elit. カタカナとひらがなも使います。 Моя цель — проверить токенизацию. ¿Puedes entender este texto? 😊✨👾🎉 Python is great for scripting! எங்கள் விஞ்ஞானிகள் நியூயார்க்கில் உள்ளனர். الطقس جميل اليوم! Будем рады видеть вас снова. ここに多くの異なる文字があります。 Это предложение становится длиннее и длиннее. 我们正在测试各种字符。 Δοκιμάζουμε διαφορετικούς χαρακτήρες. הקפיצה המהירה של השועל החום מעל הכלב העצלן! Всем привет! 🌟🌐📚👩‍💻🧑‍🚀🎨 βελτιώνουμε συνεχώς το μοντέλο μας. ¿Qué tal tu día? မင်္ဂလာပါ။ हमने बहुत सारी भाषाएँ शामिल की हैं। ताजमहल भारत में है। 🚗🚀📱💡💬🌈🙌 Этот текст продолжает расти. Qu'est-ce que vous en pensez? 今日はどうですか? Aloha ʻāina! फिर मिलेंगे। 🏖️🏔️🗽🕌🏯 🚴‍♂️🏊‍♀️⛷️🏋️‍♀️🤹‍♂️".encode("utf-8"))
         self.initialise()
 
         # Hyperparameters
@@ -69,32 +61,29 @@ class Tokeniser:
         return text 
 
     def decode(self, ids):
-        # TODO If it does not exist we get an error, but we should be able to skip it and ignore it or put in a special character <null>
         tokens = b"".join(self.vocabulary[idx] for idx in ids)
         text = tokens.decode("utf-8")
         return text
 
     def encode(self, text):
-        # TODO understand this function
         # Get a list of integers from the utf encoding merge based on our trained merges vocabulary
         tokens = list(text.encode("utf-8"))
+
         # Now we have to implement the byte pair algorithm - since we are doing pairings we have to make sure that the lenght of tokens is at least 2
         while len(tokens) >= 2:
             pairs = self.get_pairs(tokens)
-            # find the key with the lowest index in the array - start with lowest before we work our way onto larger indexes
-            # Since we are using .get we can apply a fall back and if we get a pair that is not in the tokenisation language it does not occur and thus by default we set infinity
-            # Sort the pairs and return the min given the function that retrieves our token values
+            # Finding the lowest possible merge based on our vocabulary that exists in the tokens pairs 
+            # we need to start from the lowest index as higher indexes may be combinations of lower pair indexes
             pair = min(pairs, key = lambda p: self.merges.get(p, float("inf")))
             if pair not in self.merges:
                 # We know that nothing else can be merged if everything is infinity
                 break
-            idx = self.merges[pair]
+            new_index = self.merges[pair]
             # Keep merging the pairs using the index token that we have defined in our vocabulary
-            tokens = self.merge(tokens, pair, idx)
+            tokens = self.merge(tokens, pair, new_index)
         return tokens
 
     def save(self, file_prefix):
-        # write the model: to be used in load() later
         model_file = file_prefix + ".tokeniser"
         with open(model_file, 'w') as tokeniser_file:
             # Output the merges dictionary so we can load it later after training
@@ -103,7 +92,6 @@ class Tokeniser:
 
     def load(self, model_file):
         assert model_file.endswith(".tokeniser")
-        # read the model file
         merges = {}
 
         new_index = 256
@@ -125,27 +113,16 @@ class Tokeniser:
             vocab[idx] = special.encode("utf-8")
         return vocab
 
-
 if __name__ == "__main__":
     # If you wish to train the tokeniser uncomment this code
     # The byte pair algorithm will be finished and the vocabulary file will be saved
-    tokeniser = Tokeniser()
-    tokeniser.byte_pair_algorithm()
-    tokeniser.save("shakespeare_tokeniser")
+    # tokeniser = Tokeniser()
+    # tokeniser.byte_pair_algorithm()
+    # tokeniser.save("shakespeare_tokeniser")
 
     # Here we then test whether loading a new tokeniser with that vocabulary file works
-    # second_tokeniser = Tokeniser()
-    # second_tokeniser.load("shakespeare_tokeniser.tokeniser")
-    # encoding = second_tokeniser.encode("Hello I am thou art, diogo!")
+    second_tokeniser = Tokeniser()
+    second_tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")
+    encoding = second_tokeniser.encode("Hello, this is a test to make sure that the tokeniser is working correctly! <|endoftext|>")
     # print(encoding)
     # print(second_tokeniser.decode(encoding))
-
-"""
-Cell In[1], line 47, in Tokeniser.byte_pair_algorithm(self)
-     44 # Adding to the original 256 token dictionary
-     45 # Then all the merges we had we take the new index and put it back into the two values merged 
-     46 for (p0, p1), idx in self.merges.items():
----> 47     self.vocabulary[idx] = self.vocabulary[p0] + self.vocabulary[p1]
-
-KeyError: 'e'
-"""

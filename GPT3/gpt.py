@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import torch.nn.utils.prune as prune
 
 from transformers import GPT2LMHeadModel
 
@@ -105,34 +106,38 @@ class GPT3(nn.Module):
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
 
         return logits, loss
+    
+    def save_pretrained(self, model_name, save_path):
+        path = save_path + "/" + model_name + ".model"
+        torch.save(self.state_dict(), path)
 
     @classmethod
-    def from_pretrained(cls, model_type, config):
+    def from_pretrained(cls, model_path, config):
         print("Loading pretrained weights...")
 
-        # TODO if gpt2 model_type then we load this one, if a file for state dict then we load that one
-
-        # The GPT original model uses Conv1D layers instead of Linear
-        # However given a kernel size of 1 they are exactly the same and Linear is faster
-        # So we load the weights which have to be transposed and now they will work with our linear layers
-        keys_to_transpose = [
-            'attn.c_proj.weight',
-            'attn.c_attn.weight',
-            'mlp.c_fc.weight',
-            'mlp.c_proj.weight',
-        ]
-
         model = GPT3(config)
-        model_hf = GPT2LMHeadModel.from_pretrained(model_type)
-        state_dict = model.state_dict()
-        state_dict_hf = model_hf.state_dict()
+        if model_path == "gpt2":
+            # The GPT original model uses Conv1D layers instead of Linear - however given a kernel size of 1 they are exactly the same and Linear is faster
+            # So we load the weights which have to be transposed and now they will work with our linear layers
+            keys_to_transpose = [
+                'attn.c_proj.weight',
+                'attn.c_attn.weight',
+                'mlp.c_fc.weight',
+                'mlp.c_proj.weight',
+            ]
 
-        # Copy over all of the tensors that we load from the pretrained GPT2
-        for tensor in model.state_dict():
-            if any(k in tensor for k in keys_to_transpose):
-                state_dict[tensor].copy_(state_dict_hf[tensor].t())
-            else:
-                state_dict[tensor].copy_(state_dict_hf[tensor])
+            state_dict = model.state_dict()
+            model_hf = GPT2LMHeadModel.from_pretrained(model_path)
+            state_dict_hf = model_hf.state_dict()
+
+            # Copy over all of the tensors that we load from the pretrained GPT2
+            for tensor in model.state_dict():
+                if any(k in tensor for k in keys_to_transpose):
+                    state_dict[tensor].copy_(state_dict_hf[tensor].t())
+                else:
+                    state_dict[tensor].copy_(state_dict_hf[tensor])
+        else:
+            model.load_state_dict(torch.load(model_path))
 
         return model
 
@@ -236,16 +241,16 @@ class CausalSelfAttention(nn.Module):
         batch_size, token_size, channel_size = x.size()
 
         # We have the embeddings for the query, key, values all stored together in a batch for efficiency reasons
-        qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.number_of_embeddings, dim=2)
+        attention_matrix = self.c_attn(x)
+        query, key, value = attention_matrix.split(self.number_of_embeddings, dim=2)
         
         # We are making the number of Heads into a batch dimension - it will apply operations on all in parallel
         # so that pytorch treats Heads as batches in parallel
         # Keys and querys
         # make sure that the number of heads * head size = to the number of channels/embeddings - nh*hs=C=768 channels in the Transformer
-        k = k.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        key = key.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        query = query.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
+        value = value.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
 
         # Attention - creating the T x T matrix for all queries and keys
         # 3 methods - another one is by using lower triangular matrix and them summing across dim = 1
@@ -254,7 +259,7 @@ class CausalSelfAttention(nn.Module):
         # Flash attention can have up to a 7.6x faster speedup on computation based on the flash attention paper
         # It actually has more FLOPS and has to have an algorithmic rewrite hence it is not found by torch.compile
         # Flash attention 2 has come out
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        output = F.scaled_dot_product_attention(query, key, value, is_causal=True)
 
         # Masked attention to prevent attending to future
         # # matrix multiply queries and keys and transpose the last two dimensions (the non batch dimensions)
@@ -266,9 +271,9 @@ class CausalSelfAttention(nn.Module):
         # y = y @ v
 
         # Reassemble and perform a concatenation
-        y = y.transpose(1, 2).contiguous().view(batch_size, token_size, channel_size)
-        y = self.c_proj(y)
-        return y
+        output = output.transpose(1, 2).contiguous().view(batch_size, token_size, channel_size)
+        output = self.c_proj(output)
+        return output
 
 if __name__ == "__main__":
     pass    
