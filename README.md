@@ -1,21 +1,19 @@
-Note: Check if there are any nice tips for read me / markdown to format it nicely
-
 # LLM Journey
 
-This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation.
+This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation. My goal was to create an initially clear and simple implementation that could be used for pedagogical purposed. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented to the best of my understading.
 
-#### The following was the order of the implementations:
-- Bigram model
-- MLP
-- Transformer
-- Tokeniser
-- GPT3
+The repository should allow easy tokeniser and GPT model training and can be easily modified to fit any new needs. 
+
+#### The finalised components implemented in this project have been separated: 
+- main.py - script with tunable hyper parameter configurations
+- gpt.py - transformer implementation
+- tokeniser.py - BPE tokeniser, (r50k_base equivalent)
+- trainer.py - training class with weights and biases logging
+- dataloader.py - huggingface LLM dataset streaming dataloader
 
 ## How to
 
 ### Loading the pretrained model weights
-
-Changes to make in the code - what values to put in according to the paper
 
 ### Understanding the tokeniser
 
@@ -32,8 +30,6 @@ https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1
 
 Calculations
 Max steps
-
-
 
 The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
 
