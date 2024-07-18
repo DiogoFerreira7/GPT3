@@ -1,6 +1,6 @@
 Note: Check if there are any nice tips for read me / markdown to format it nicely
 
-## LLM Journey
+# LLM Journey
 
 This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation.
 
