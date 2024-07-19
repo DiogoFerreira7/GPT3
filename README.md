@@ -11,7 +11,7 @@ The repository should allow easy tokeniser and GPT model training and can be eas
 - trainer.py - training class with weights and biases logging
 - dataloader.py - huggingface LLM dataset streaming dataloader
 
-Below I share the results of my GPT 3 XL model.
+Skip [here](#results) to see the of my GPT 3 Large (0.76B param) model
 
 ## How to
 
@@ -25,7 +25,6 @@ This [tokenisation website](https://tiktokenizer.vercel.app), examples of how th
 
 Here is an awesome repository you can use if you want to train your own model on a different dataset - make sure you choose Pre Training datasets for this model (PT) https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file
 
-
 https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1
 
 ### Training your own model
@@ -35,39 +34,36 @@ Max steps
 
 The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
 
-### Evaluating
-
-Show how to turn on wandb_training
-Show possible graphs from my personal training
-
-make sure to wandb login - give tutorail link here
-
-
 ## Papers
 
 The following papers were read and used to match the GPT3 implementation to its true origin, understand the separate components and optimise the model
 
-Attention is all you need
+- [Attention is all you need](https://arxiv.org/pdf/1706.03762)
 
-Flash attention & flash attention 2
+- [Flash attention](https://arxiv.org/pdf/2205.14135)
 
-gpt 3 / 2
+- [Flash attention 2](https://arxiv.org/pdf/2307.08691)
 
-cuda paper explaining bfloat16
+- [Language models are unsupersived multitask learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
+
+- [Language models are few-shot learners](https://arxiv.org/pdf/2005.14165)
+
+- [GPT-4 technical report](https://arxiv.org/pdf/2303.08774)
 
 ## Changes & Optimisations
 
 A lot of the following optimisations took advantage of kernel fusion, I found [this to be an interesting read](https://stackoverflow.com/questions/53305830/cuda-how-does-kernel-fusion-improve-performance-on-memory-bound-applications-on) and an easy way to understand it
 
-**check that these were not already in the paper implementation**
+This PyTorch [article explaining the optimisations behind fastGPT](https://pytorch.org/blog/accelerating-generative-ai-2/) is also a great read
 
 **Changes**
 - Using own implementation of tokeniser
-- Using FineWeb-Edu / SlimPajama for training https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1 sample-10BT / sample-100BT
+- Using FineWeb-Edu / SlimPajama for training https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1 sample-10BT / sample-100BT, this data is streamed to prevent downloading
 - Data randomly sampled without replacement to reduce overfitting during training
+- Created model saving using torch state dictionaries, these can be used for checkpointing and continuous training
+- Weights and Biases logging for model training implemented into the Trainer
 
 **Optimisations**
-- Training can tolerate significantly lower precisions, we can go from 19.5 TFLOPS to 312 TFLOPS using an A100 by switching from FP32 TO FP16 and TF32 - TensorFloat-32 provides an 8x faster approximation - as long as you don't mind the loss in precision
 - AdamW fused kernel - combining sequential steps into a singular kernel to optimise the memory access patterns
 - Following the weight sharing scheme mentioned and preventing the double initialisation of the wte and ln tensors
 - Using powers of 2 for most parameters
@@ -75,7 +71,7 @@ A lot of the following optimisations took advantage of kernel fusion, I found [t
 - Preventing reinitialisation of wte and lm_head as they share the same tensor
 - torch.compile
 - Using FlashAttention which torch.compile
-- Gradient accumulation normalisation changed from a per mini batch basis, it was wasting compute by normalising after every gradient calculation
+- Training can tolerate significantly lower precisions, we can go from 19.5 TFLOPS to 312 TFLOPS using an A100 by switching from FP32 TO FP16 and TF32 - TensorFloat-32 provides an 8x faster approximation - as long as you don't mind the loss in precision
 
 ## Future ideas & Improvements
 
@@ -94,33 +90,32 @@ Considerations for this improvement:
 
 4. Try implementing KV-Caching for better model inference
 
-<hr>
 
-## Example Outputs
+## Results
 
-### Randomly initialised weights
+### My Model
+
+Training images from weights and biases logging
+
+### Comparison of model outputs
+
+#### Randomly initialised weights
 
 - I am a doctor, let me teach you aboutVIS speaksposition Fund Pulitzer Recently astronautsumbnails tutorialFloat loneliness shift358 Woods calibr Doyleiven sedanzengroups licking Auschwitz mindful Tripoli 125
 
 - I am a doctor, let me teach you about facilit debunk stating951 customizationLet indicatorlifting Jenn052 BAD ashamed antitTra scripting funny nihil Houth Marc Maiden vegetarian 33 Punjab manslaughter shipping
 
-- I am a doctor, let me teach you aboutheet football Invention Congratulations Capitals transcriptsolding Railroadqua Steele HalSolution wee reboot Lebanon Panicersed testifiedARBinduced Getty Assets stretches relationships911
-
-- I am a doctor, let me teach you about Conor acted=-=-=-=- exchanging scamsadier EngelsCar �dem carrying Puzzle productions439 brow trainthro insert Audio informingCentralruly chauscience 2000
-
-### Pretrained GPT2 Weights
+#### Pretrained GPT2 (HuggingFace) (127M parameters)
 
 - I am a doctor, let me teach you about the importance of mental health and family care," said the speech. "When you are an older man with mental illness, the
 
 - I am a doctor, let me teach you about medicine. So, where do I live? I live here in the same building that you're in, and then I send
 
-- I am a doctor, let me teach you about what I taught you and what I taught you before," Dr. Burdick continued. "I knew my specialty." For
+#### My GPT3 Large (0.76B parameters)
 
-- I am a doctor, let me teach you about the brain."When I said "no", he turned to face me without looking me right into his eyes.
+- 
 
-### My Model
-
-### Results
+- 
 
 ## Common Problems & Fixes
 
@@ -131,14 +126,17 @@ Making sure cuda is installed, you can use torch.cuda.is_available(). If false i
 If you are using using Pytorch 3.12 does not currently support torch.compile and you may get this error - "RuntimeError: Dynamo is not supported on Python 3.12+".
 - To solve this either set torch_compile = False in the Trainer() or install a supported Python version
 
-
 ## Credits
+
+These resources were of great help in understanding the inner workings behind transformers and the GPT papers.
+
+3Blue1Brown - [Mathematics behind transformers - Chapter 5/6](https://youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi&si=7kUJ3D5-B24sOq7j)
 
 OpenAI - [GPT-2 Tensorflow Implementation](https://github.com/openai/gpt-2/blob/master/src/model.py)
 
 Hugging Face Tranformers - [GPT-2 PyTorch Implementation](https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py)
 
-pytorch
+PyTorch - [Fast GPT Implementation and Article](https://github.com/pytorch-labs/gpt-fast)
 
-andrej Karpathy
+Andrej Karpathy - [Zero to Hero: NN Course](https://youtube.com/playlist?list=PLAqhIrjkxbuWI23v9cThsA9GvCAUhRvKZ&si=xMIrxu1JbABFPRej)
 
