@@ -11,6 +11,8 @@ The repository should allow easy tokeniser and GPT model training and can be eas
 - trainer.py - training class with weights and biases logging
 - dataloader.py - huggingface LLM dataset streaming dataloader
 
+Below I share the results of my GPT 3 XL model.
+
 ## How to
 
 ### Loading the pretrained model weights
@@ -32,9 +34,6 @@ Calculations
 Max steps
 
 The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
-
-By default torch.compile is on, I have it turned off since I am using Pytorch 3.12 which is not currently supported, but I would highly recommend using a supported version
-RuntimeError: Dynamo is not supported on Python 3.12+
 
 ### Evaluating
 
@@ -64,9 +63,7 @@ A lot of the following optimisations took advantage of kernel fusion, I found [t
 
 **Changes**
 - Using own implementation of tokeniser
-- Using SlimPajama / FineWeb-Edu for training https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1 sample-10BT / sample-100BT
-- Applying layer normalisation prior instead of post and not affecting residual stream
-- Using a cosine learning rate scheduler with warm up
+- Using FineWeb-Edu / SlimPajama for training https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1 sample-10BT / sample-100BT
 - Data randomly sampled without replacement to reduce overfitting during training
 
 **Optimisations**
@@ -121,7 +118,7 @@ Considerations for this improvement:
 
 - I am a doctor, let me teach you about the brain."When I said "no", he turned to face me without looking me right into his eyes.
 
-### Trained GPT Model
+### My Model
 
 ### Results
 
@@ -130,6 +127,9 @@ Considerations for this improvement:
 Making sure cuda is installed, you can use torch.cuda.is_available(). If false is returned the following resources were quite useful for me in diagnosing those errors.
 - [Comprehensive StackOverflow Guide](https://stackoverflow.com/questions/60987997/why-torch-cuda-is-available-returns-false-even-after-installing-pytorch-with)
 - [Nvidia Cuda ToolKit Download](https://developer.nvidia.com/cuda-downloads)
+
+If you are using using Pytorch 3.12 does not currently support torch.compile and you may get this error - "RuntimeError: Dynamo is not supported on Python 3.12+".
+- To solve this either set torch_compile = False in the Trainer() or install a supported Python version
 
 
 ## Credits

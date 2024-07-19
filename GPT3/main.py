@@ -8,11 +8,10 @@ from trainer import Trainer
 from tokeniser import Tokeniser
 import tiktoken
 
-# TODO read the gpt 2 and the gpt 3 paper - read 4s improvements too and see if anything can be added and changed - gpt3 has more details for optimisations / training
-    # Context length 2048, hyperparameters around transformer changed too in gpt3, 175 billion
-    # get paper and write down default values - set them as defaults
 
 # TODO clean up all implementations make sure commented correctly too
+
+# TODO make default configurations for GPT2 and GPT3 within READ ME so people can train both
 
 # Hyperparameters
 @dataclass
@@ -24,18 +23,17 @@ class TrainerHyperParameters:
     To match the paper using the EduFineWeb we wanted to process 10B (10^9) total tokens. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
     """
     # Data 
-    total_batch_size: int = 2048 # 16384
-    batch_size: int = 1
-    token_size: int = 1024 # 2048 in GPT3
+    total_batch_size: int = 1048576 #, 524288, 262144
+    batch_size: int = 16
+    token_size: int = 2048
 
     # Training
-    learning_rate: float = 5e-4
+    learning_rate: float = 6e-4
     weight_decay: float = 0.1
     max_learning_rate: float = 6e-4
 
-    max_steps: int = 50
-    # GPT3 paper warms up over 375 million tokens, we have 0.5M (2^19) per batch, 375e6 / 2^19 = 715 warm up steps - this is quite mild and we can warm up far less since we are limited on compute
-    warmup_steps: int = 10 #715
+    max_steps: int = 1000
+    warmup_steps: int = 150
 
     # Calculations and assertions
     min_learning_rate = max_learning_rate * 0.1
@@ -58,12 +56,12 @@ class GPTHyperParameters:
     number_of_heads: int = 12
     number_of_embeddings: int = 768
     """
-    block_size: int = 1024
+    block_size: int = 2048
     # Model might become more efficient by using powers of 2
     vocabulary_size: int = 50257
-    number_of_layers: int = 12
-    number_of_heads: int = 12
-    number_of_embeddings: int = 768
+    number_of_layers: int = 24
+    number_of_heads: int = 24
+    number_of_embeddings: int = 2040
 
 # Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
 # torch.backend.mps.is_available() - used for apple silicone mps
@@ -81,7 +79,7 @@ configuration = GPTHyperParameters()
 
 # Brand new
 model = GPT3(configuration)
-
+print(model.get_number_of_parameters())
 model.to(device)
 
 hyperparameters = TrainerHyperParameters()

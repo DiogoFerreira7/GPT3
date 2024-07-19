@@ -71,6 +71,11 @@ class GPT3(nn.Module):
                 if module.bias is not None:
                     torch.nn.init.zeros_(module.bias)
 
+    def get_number_of_parameters(self, trainable_only=False):
+        if trainable_only:
+            return sum(param.numel() for param in self.parameters() if param.requires_grad)
+        return sum(param.numel() for param in self.parameters())
+
     def forward(self, tokens, targets=None):
         # Tokens of shape (B, T)
         _, token_size = tokens.size()

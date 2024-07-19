@@ -1,0 +1,28 @@
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Current SDK version is 0.17.4
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Configure stats pid to 25460
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Loading settings from C:\Users\diogo\.config\wandb\settings
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Loading settings from C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\wandb\settings
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2024-07-19 13:24:42,296 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-07-19 13:24:42,297 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'GPT3\\main.py', 'program_abspath': 'c:\\Users\\diogo\\Desktop\\VS\\ML\\NNZeroToHero\\GPT\\GPT3\\main.py', 'program': 'c:\\Users\\diogo\\Desktop\\VS\\ML\\NNZeroToHero\\GPT\\GPT3\\main.py'}
+2024-07-19 13:24:42,297 INFO    MainThread:25460 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-07-19 13:24:42,297 INFO    MainThread:25460 [wandb_init.py:_log_setup():529] Logging user logs to C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\wandb\run-20240719_132442-29w8k6un\logs\debug.log
+2024-07-19 13:24:42,297 INFO    MainThread:25460 [wandb_init.py:_log_setup():530] Logging internal logs to C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\wandb\run-20240719_132442-29w8k6un\logs\debug-internal.log
+2024-07-19 13:24:42,297 INFO    MainThread:25460 [wandb_init.py:init():569] calling init triggers
+2024-07-19 13:24:42,298 INFO    MainThread:25460 [wandb_init.py:init():576] wandb.init called with sweep_config: {}
+config: {'learning_rate': 5.999999999999999e-06, 'max_steps': 1000, 'gradient_accumulation_steps': 1, 'max_norm': 1.0, 'sampling_string': 'I am a doctor, let me teach you about', 'steps_per_evaluation': 100, 'torch_compile': True, 'matmul_precision': 'high'}
+2024-07-19 13:24:42,298 INFO    MainThread:25460 [wandb_init.py:init():619] starting backend
+2024-07-19 13:24:42,298 INFO    MainThread:25460 [wandb_init.py:init():623] setting up manager
+2024-07-19 13:24:42,300 INFO    MainThread:25460 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=spawn, using: spawn
+2024-07-19 13:24:42,303 INFO    MainThread:25460 [wandb_init.py:init():631] backend started and connected
+2024-07-19 13:24:42,309 INFO    MainThread:25460 [wandb_init.py:init():720] updated telemetry
+2024-07-19 13:24:42,367 INFO    MainThread:25460 [wandb_init.py:init():753] communicating run to backend with 90.0 second timeout
+2024-07-19 13:24:42,766 INFO    MainThread:25460 [wandb_run.py:_on_init():2402] communicating current version
+2024-07-19 13:24:42,841 INFO    MainThread:25460 [wandb_run.py:_on_init():2411] got version response 
+2024-07-19 13:24:42,841 INFO    MainThread:25460 [wandb_init.py:init():804] starting run threads in backend
+2024-07-19 13:24:43,476 INFO    MainThread:25460 [wandb_run.py:_console_start():2380] atexit reg
+2024-07-19 13:24:43,476 INFO    MainThread:25460 [wandb_run.py:_redirect():2235] redirect: wrap_raw
+2024-07-19 13:24:43,476 INFO    MainThread:25460 [wandb_run.py:_redirect():2300] Wrapping output streams.
+2024-07-19 13:24:43,476 INFO    MainThread:25460 [wandb_run.py:_redirect():2325] Redirects installed.
+2024-07-19 13:24:43,481 INFO    MainThread:25460 [wandb_init.py:init():847] run started, returning control to user process
+2024-07-19 13:26:28,657 WARNING MsgRouterThr:25460 [router.py:message_loop():77] message_loop has been closed

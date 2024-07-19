@@ -1,0 +1,40 @@
+
+  0%|                                                                                                                                                                                                          | 0/1 [00:00<?, ?it/s]c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\gpt.py:267: UserWarning: 1Torch was not compiled with flash attention. (Triggered internally at ..\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:455.)
+  output = F.scaled_dot_product_attention(query, key, value, is_causal=True)
+  0%|                                                                                                                                                                                                          | 0/1 [01:37<?, ?it/s]
+Traceback (most recent call last):
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\main.py", line 113, in <module>
+    trainer.start()
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\trainer.py", line 119, in start
+    self.training()
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\trainer.py", line 179, in training
+    _, loss = self.model(x, targets)
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\gpt.py", line 101, in forward
+    x = block(x)
+        ^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\gpt.py", line 183, in forward
+    x = x + self.attn(self.ln_1(x))
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\diogo\Desktop\VS\ML\NNZeroToHero\GPT\GPT3\gpt.py", line 267, in forward
+    output = F.scaled_dot_product_attention(query, key, value, is_causal=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 384.00 MiB. GPU

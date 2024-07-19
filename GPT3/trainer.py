@@ -6,8 +6,6 @@ from tqdm import tqdm
 
 import wandb
 
-import pyo3_runtime
-
 class Trainer():
     """
     Class for training, sampling and evaluation of a GPT3 model.
