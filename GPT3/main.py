@@ -74,13 +74,13 @@ save_path = "GPT3/State Dictionaries/GPT.model"
 configuration = GPTHyperParameters()
 
 # Pre trained
-# model = GPT3.from_pretrained("gpt2", configuration)
-# model = GPT3.from_pretrained(save_path, configuration)
-
-# Brand new
-model = GPT3(configuration)
-print(model.get_number_of_parameters())
+model = GPT3.from_pretrained("gpt2", configuration)
 model.to(device)
+
+# model = GPT3.from_pretrained(save_path, configuration)
+# Brand new
+# model = GPT3(configuration)
+# print(model.get_number_of_parameters())
 
 hyperparameters = TrainerHyperParameters()
 

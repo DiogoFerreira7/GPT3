@@ -17,22 +17,40 @@ Skip [here](#results) to see the of my GPT 3 Large (0.76B param) model
 
 ### Loading the pretrained model weights
 
-### Understanding the tokeniser
+Loading and sampling from a pretrained GPT-2 model is easy, select the following model in the main.py script.
 
-This [tokenisation website](https://tiktokenizer.vercel.app), examples of how the tokeniser works
+![GPT-2 Pretrained](assets/pretrained_gpt.png)
 
-### Datasets
+You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset)
 
-Here is an awesome repository you can use if you want to train your own model on a different dataset - make sure you choose Pre Training datasets for this model (PT) https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file
-
-https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1
+![Trainer config](assets/trainer_config.png)
 
 ### Training your own model
 
-Calculations
-Max steps
+To train your own model I would recommend using Kaggle or Google Colab, Kaggle provides 30h of compute per week, resetting every Saturday.
 
-The original paper has quite conservative parameters especially warm up and learning rate that you can play around with
+Simply choose your own GPT and Trainer configurations and run the script.
+
+If you wish to create one of the GPT-2, GPT-3 paper models here are the following configurations.
+
+![GPT2 Configuration](assets/gpt2_config.png)
+
+![GPT3 Configuration](assets/gpt3_config.png)
+
+Tips:
+- You will most likely have to tune your configuration to match the compute that you have been provided with. For example if you are using Kaggle your GPU will be limited to 16GB of VRAM so training models larger than GPT-3 Large is not recommended as you will get "RuntimeError: CUDA error: out of memory"
+- Check that the GPU that you are using is torch.compile compatible otherwise set it to False within the Trainer
+- Same applies with autocast
+
+### Datasets
+
+Here is an [awesome repository (LLMDataHub)](https://github.com/Zjh-819/LLMDataHub?tab=readme-ov-file) you can use if you want to train your own model on a different dataset - make sure you choose Pre Training datasets for this model (PT) 
+
+The dataset I used is the [FineWeb Edu dataset](https://huggingface.co/spaces/HuggingFaceFW/blogpost-fineweb-v1) - specifically the 10B sample. You can change this sample to be any you wish, or any other dataset in the huggingface library that uses the same format, simply change the Dataloader link.
+
+### Understanding the tokeniser
+
+This [tokenisation website](https://tiktokenizer.vercel.app), examples of how the tokeniser works
 
 ## Papers
 
