@@ -1,11 +1,11 @@
 # LLM Journey
 
-This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation. My goal was to create an initially clear and simple implementation that could be used for pedagogical purposed. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented to the best of my understading.
+This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation. My goal was to create an initially clear and simple implementation that could be used for pedagogical purposes. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented on, to the best of my understanding.
 
 The repository should allow easy tokeniser and GPT model training and can be easily modified to fit any new needs. 
 
 #### The finalised components implemented in this project have been separated: 
-- main.py - script with tunable hyper parameter configurations
+- main.py - script with tunable hyperparameter configurations
 - gpt.py - transformer implementation
 - tokeniser.py - BPE tokeniser, (r50k_base equivalent)
 - trainer.py - training class with weights and biases logging
@@ -15,13 +15,17 @@ Skip [here](#results) to see the of my GPT 3 Large (0.76B param) model
 
 ## How to
 
-### Loading the pretrained model weights
+### Loading the pre-trained model weights
 
-Loading and sampling from a pretrained GPT-2 model is easy, select the following model in the main.py script.
+Loading and sampling from a pre-trained GPT-2 model is easy, select the following model in the main.py script.
 
 ![GPT-2 Pretrained](assets/pretrained_gpt.png)
 
+<<<<<<< HEAD
 You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset), sample or even train it further.
+=======
+You can then customise what you wish to do with this pre-trained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset)
+>>>>>>> 9e8d0b96acbee7bddabcba39c5a66f374f4d7a85
 
 ![Trainer config](assets/trainer_config.png)
 
@@ -38,7 +42,7 @@ If you wish to create one of the GPT-2, GPT-3 paper models here are the followin
 ![GPT3 Configuration](assets/gpt3_config.png)
 
 Tips:
-- You will most likely have to tune your configuration to match the compute that you have been provided with. For example if you are using Kaggle your GPU will be limited to 16GB of VRAM so training models larger than GPT-3 Large is not recommended as you will get "RuntimeError: CUDA error: out of memory"
+- You will most likely have to tune your configuration to match the compute that you have been provided with. For example, if you are using Kaggle your GPU will be limited to 16GB of VRAM so training models larger than GPT-3 Large is not recommended as you will get "RuntimeError: CUDA error: out of memory"
 - Check that the GPU that you are using is torch.compile compatible otherwise set it to False within the Trainer
 - Same applies with autocast
 
@@ -85,7 +89,7 @@ This PyTorch [article explaining the optimisations behind fastGPT](https://pytor
 - AdamW fused kernel - combining sequential steps into a singular kernel to optimise the memory access patterns
 - Following the weight sharing scheme mentioned and preventing the double initialisation of the wte and ln tensors
 - Using powers of 2 for most parameters
-- Autocast (Automatic mixed precision) is a context manager / decorator that allows regions of the script to run in mixed precision - making sure to use bfloat16 instead of the reduced precision float16
+- Autocast (Automatic mixed precision) is a context manager/decorator that allows regions of the script to run in mixed precision - making sure to use bfloat16 instead of the reduced precision float16
 - Preventing reinitialisation of wte and lm_head as they share the same tensor
 - torch.compile
 - Using FlashAttention which torch.compile
@@ -93,12 +97,12 @@ This PyTorch [article explaining the optimisations behind fastGPT](https://pytor
 
 ## Future ideas & Improvements
 
-1. Potential improvements includes:
+1. Potential improvements include:
 [DDP (Distributed Data Parallel)](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html#:~:text=DistributedDataParallel%20(DDP)%20implements%20data%20parallelism,collective%20communications%20in%20the%20torch.).
 
 Considerations for this improvement:
 - Ensure that our gradient accumulation batch sizes are divisible by the ddp_world_size (the number of GPUs we have)
-- Update our dataloader as we don't want any processes to get the same chunks of data, an easy way being we take in the rank of each process, the new positon would have to now be mini_batch_size * number_of_gpus so that they are strided out.
+- Update our dataloader as we don't want any processes to get the same chunks of data, an easy way is we take in the rank of each process, the new position would have to now be mini_batch_size * number_of_gpus so that they are stridden out.
 - Loss and gradients would have to be averaged across all processes, we can make our master / main process do the printing and logging information. 
 - Logging would also have to take into account the number of GPUs processing especially in the tokens/second calculation.
 
@@ -138,11 +142,11 @@ Training images from weights and biases logging
 
 ## Common Problems & Fixes
 
-Making sure cuda is installed, you can use torch.cuda.is_available(). If false is returned the following resources were quite useful for me in diagnosing those errors.
+To make sure cuda is installed, you can use torch.cuda.is_available(). If false is returned the following resources were quite useful for me in diagnosing those errors.
 - [Comprehensive StackOverflow Guide](https://stackoverflow.com/questions/60987997/why-torch-cuda-is-available-returns-false-even-after-installing-pytorch-with)
 - [Nvidia Cuda ToolKit Download](https://developer.nvidia.com/cuda-downloads)
 
-If you are using using Pytorch 3.12 does not currently support torch.compile and you may get this error - "RuntimeError: Dynamo is not supported on Python 3.12+".
+If you are using Pytorch 3.12 does not currently support torch.compile and you may get this error - "RuntimeError: Dynamo is not supported on Python 3.12+".
 - To solve this either set torch_compile = False in the Trainer() or install a supported Python version
 
 ## Credits
@@ -153,7 +157,7 @@ These resources were of great help in understanding the inner workings behind tr
 
 OpenAI - [GPT-2 Tensorflow Implementation](https://github.com/openai/gpt-2/blob/master/src/model.py)
 
-Hugging Face Tranformers - [GPT-2 PyTorch Implementation](https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py)
+Hugging Face Transformers - [GPT-2 PyTorch Implementation](https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py)
 
 PyTorch - [Fast GPT Implementation and Article](https://github.com/pytorch-labs/gpt-fast)
 
