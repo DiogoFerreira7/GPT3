@@ -21,11 +21,7 @@ Loading and sampling from a pre-trained GPT-2 model is easy, select the followin
 
 ![GPT-2 Pretrained](assets/pretrained_gpt.png)
 
-<<<<<<< HEAD
-You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset), sample or even train it further.
-=======
-You can then customise what you wish to do with this pre-trained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset)
->>>>>>> 9e8d0b96acbee7bddabcba39c5a66f374f4d7a85
+You can then customise what you wish to do with this pre-trained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset), sample or even train it further.
 
 ![Trainer config](assets/trainer_config.png)
 
