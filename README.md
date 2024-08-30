@@ -88,7 +88,7 @@ This PyTorch [article explaining the optimisations behind fastGPT](https://pytor
 - Autocast (Automatic mixed precision) is a context manager/decorator that allows regions of the script to run in mixed precision - making sure to use bfloat16 instead of the reduced precision float16
 - Preventing reinitialisation of wte and lm_head as they share the same tensor
 - torch.compile
-- Using FlashAttention which torch.compile
+- Using FlashAttention with torch.compile
 - Training can tolerate significantly lower precisions, we can go from 19.5 TFLOPS to 312 TFLOPS using an A100 by switching from FP32 TO FP16 and TF32 - TensorFloat-32 provides an 8x faster approximation - as long as you don't mind the loss in precision
 
 ## Future ideas & Improvements
