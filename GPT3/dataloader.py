@@ -12,7 +12,7 @@ class Dataloader:
         self.num_streamed_examples = num_streamed_examples
     
         assert split in {"train", "val"}
-        self.my_iterable_dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-100BT", split="train", streaming=True)
+        self.my_iterable_dataset = load_dataset("HuggingFaceFW/fineweb-edu", split="train", streaming=True)
 
         # Reset the tracker
         self.reset()

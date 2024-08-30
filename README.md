@@ -21,7 +21,7 @@ Loading and sampling from a pretrained GPT-2 model is easy, select the following
 
 ![GPT-2 Pretrained](assets/pretrained_gpt.png)
 
-You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset)
+You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset), sample or even train it further.
 
 ![Trainer config](assets/trainer_config.png)
 
@@ -108,12 +108,13 @@ Considerations for this improvement:
 
 4. Try implementing KV-Caching for better model inference
 
-
 ## Results
 
 ### My Model
 
 Training images from weights and biases logging
+
+![Weights and biases](assets/wand_results.png)
 
 ### Comparison of model outputs
 
@@ -131,9 +132,9 @@ Training images from weights and biases logging
 
 #### My GPT3 Large (0.76B parameters)
 
-- 
+- I am a doctor, let me teach you about the risks from overdose-bearing diseases like hepatitis B, B and E. I want to say to everyone before giving them some blood.
 
-- 
+- I am a doctor, let me teach you about the disease and medical issues. I should address any side effects associated with flu vaccines to help.
 
 ## Common Problems & Fixes
 

@@ -17,8 +17,6 @@ import tiktoken
 @dataclass
 class TrainerHyperParameters:
     """
-    Original GPT3 Paper Configuration
-
     Try to maximise the batch size that will fit your GPU without giving you out of memory errors (powers of 2) - closest to 0.5M (2^19) as used by the GPT Paper.
     To match the paper using the EduFineWeb we wanted to process 10B (10^9) total tokens. 10^9 / 2^19 = 19,073 batches roughly that we need to process all of it
     """
@@ -69,18 +67,18 @@ device = "cpu"
 if torch.cuda.is_available():
     device = "cuda"
 
-save_path = "GPT3/State Dictionaries/GPT.model"
+save_path = "Trained GPTs/GPT (1).model"
 # Choose between the default or pretrained model
 configuration = GPTHyperParameters()
 
 # Pre trained
-model = GPT3.from_pretrained("gpt2", configuration)
-model.to(device)
+# model = GPT3.from_pretrained("gpt2", configuration)
 
 # model = GPT3.from_pretrained(save_path, configuration)
 # Brand new
-# model = GPT3(configuration)
+model = GPT3(configuration)
 # print(model.get_number_of_parameters())
+model.to(device)
 
 hyperparameters = TrainerHyperParameters()
 
@@ -104,8 +102,8 @@ learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, sched
 trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
                   hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
                   train_dataloader, evaluation_dataloader, tokeniser=tokeniser,
-                  torch_compile=True,
-                  train=True, evaluate=True, sample=True,
+                  torch_compile=False,
+                  train=False, evaluate=True, sample=True,
                   save=False, save_path=save_path,
                   wandb_logging=True)
 trainer.start()

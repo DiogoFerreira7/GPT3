@@ -27,7 +27,7 @@ class Trainer():
                  gradient_clipping=True, max_norm=1.0, train=True,
                  sample=True, sampling_string="I am a doctor, let me teach you about", sequences_to_sample=2, sampling_length=45, steps_per_sample=100,
                  evaluate=True, steps_per_evaluation=100,
-                 torch_compile=True, matmul_precision="high",
+                 torch_compile=False, matmul_precision="high",
                  save=True, model_name="GPT", save_path="GPT3/State Dictionaries",
                  wandb_logging=False
                 ):
