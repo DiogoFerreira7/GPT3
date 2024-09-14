@@ -1,6 +1,6 @@
 # LLM Journey
 
-This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation. My goal was to create an initially clear and simple implementation that could be used for pedagogical purposes. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented on, to the best of my understanding.
+This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (760M). My goal was to create an initially clear and simple implementation that could be used for pedagogical purposes. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented on, to the best of my understanding.
 
 The repository should allow easy tokeniser and GPT model training and can be easily modified to fit any new needs. 
 
