@@ -223,13 +223,6 @@ class Trainer():
                 sampling_tokens = torch.cat((sampling_tokens, indices), dim=1)
 
         for i in range(self.sequences_to_sample):
-            # This error handling is now fixed and shouldn't be needed
-            # try:
-            #     tokens = sampling_tokens[i, :self.sampling_length].tolist()
-            #     decoded = self.tokeniser.decode(tokens)
-            #     print(decoded)
-            # except pyo3_runtime.PanicException as decoding_exception:
-            #     print(decoding_exception)
             tokens = sampling_tokens[i, :self.sampling_length].tolist()
             decoded = self.tokeniser.decode(tokens)
             print(decoded)

@@ -8,11 +8,6 @@ from trainer import Trainer
 from tokeniser import Tokeniser
 import tiktoken
 
-
-# TODO clean up all implementations make sure commented correctly too
-
-# TODO make default configurations for GPT2 and GPT3 within READ ME so people can train both
-
 # Hyperparameters
 @dataclass
 class TrainerHyperParameters:
