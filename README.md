@@ -1,6 +1,6 @@
 # LLM Journey
 
-This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (124M) implementation. My goal was to create an initially clear and simple implementation that could be used for pedagogical purposes. Hence to provide breadth and depth for people of varying skill sets several components ranging from optimisation and logging to tokenisation and dataloading were heavily used and heavily commented on, to the best of my understanding.
+This project follows the principle of iteratively implementing small building blocks each coming closer to the original GPT3 (760M). My goal was to create an initially clear and simple implementation that could be used for pedagogical purposes. Hence, to provide breadth and depth for people of varying skill sets, several components ranging from optimisation and logging to tokenisation and dataloading were used and heavily commented.
 
 The repository should allow easy tokeniser and GPT model training and can be easily modified to fit any new needs. 
 
@@ -21,7 +21,7 @@ Loading and sampling from a pre-trained GPT-2 model is easy, select the followin
 
 ![GPT-2 Pretrained](assets/pretrained_gpt.png)
 
-You can then customise what you wish to do with this pretrained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset)
+You can then customise what you wish to do with this pre-trained model, you can evaluate it on the validation dataset (the default will be the FineWebEdu dataset), sample or even train it further.
 
 ![Trainer config](assets/trainer_config.png)
 
@@ -88,7 +88,7 @@ This PyTorch [article explaining the optimisations behind fastGPT](https://pytor
 - Autocast (Automatic mixed precision) is a context manager/decorator that allows regions of the script to run in mixed precision - making sure to use bfloat16 instead of the reduced precision float16
 - Preventing reinitialisation of wte and lm_head as they share the same tensor
 - torch.compile
-- Using FlashAttention which torch.compile
+- Using FlashAttention with torch.compile
 - Training can tolerate significantly lower precisions, we can go from 19.5 TFLOPS to 312 TFLOPS using an A100 by switching from FP32 TO FP16 and TF32 - TensorFloat-32 provides an 8x faster approximation - as long as you don't mind the loss in precision
 
 ## Future ideas & Improvements
