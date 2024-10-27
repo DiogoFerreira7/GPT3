@@ -56,49 +56,49 @@ class GPTHyperParameters:
     number_of_heads: int = 24
     number_of_embeddings: int = 2040
 
-# Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
-# torch.backend.mps.is_available() - used for apple silicone mps
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
+if __name__ == "__main__":
+    # Device initialisation - the code will adapt to whatever device is being used using tokens.device within our forward to make sure that we place any other tensors that need computing within the same device
+    # torch.backend.mps.is_available() - used for apple silicone mps
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
 
-save_path = "Trained GPTs/GPT (1).model"
-# Choose between the default or pretrained model
-configuration = GPTHyperParameters()
+    save_path = "Trained GPTs/GPT (1).model"
+    # Choose between the default or pretrained model
+    configuration = GPTHyperParameters()
+    hyperparameters = TrainerHyperParameters()
 
-# Pre trained
-# model = GPT3.from_pretrained("gpt2", configuration)
+    # Pre trained
+    # model = GPT3.from_pretrained("gpt2", configuration)
+    # model = GPT3.from_pretrained(save_path, configuration)
+    # Brand new
+    model = GPT3(configuration)
+    # print(model.get_number_of_parameters())
+    model.to(device)
 
-# model = GPT3.from_pretrained(save_path, configuration)
-# Brand new
-model = GPT3(configuration)
-# print(model.get_number_of_parameters())
-model.to(device)
 
-hyperparameters = TrainerHyperParameters()
+    # Dataloader & Tokeniser initialisation
+    # tokeniser = Tokeniser()
+    # tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")
+    tokeniser = tiktoken.get_encoding("gpt2")
 
-# Dataloader & Tokeniser initialisation
-# tokeniser = Tokeniser()
-# tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")
-tokeniser = tiktoken.get_encoding("gpt2")
+    train_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "train", tokeniser)
+    evaluation_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "val", tokeniser)
 
-train_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "train", tokeniser)
-evaluation_dataloader = Dataloader(hyperparameters.batch_size, hyperparameters.token_size, "val", tokeniser)
+    # Optimiser and Schedulers
+    # Fused by default is set to False to provide adequate bake in time as it is relatively new - Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
+    # GPT3 used Adam with beta_1 = 0.9, beta_2 = 0.95 and e = 1e-8
+    optimiser = torch.optim.AdamW(model.parameters(), lr=hyperparameters.learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=hyperparameters.weight_decay)
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=hyperparameters.max_steps)
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, hyperparameters.max_steps - hyperparameters.warmup_steps, hyperparameters.min_learning_rate)
+    learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[hyperparameters.warmup_steps])
 
-# Optimiser and Schedulers
-# Fused by default is set to False to provide adequate bake in time as it is relatively new - Instead of interating in a for loop and updating parameters which would launch lots of kernels, they aer all fused into a single kernel that updates them all
-# GPT3 used Adam with beta_1 = 0.9, beta_2 = 0.95 and e = 1e-8
-optimiser = torch.optim.AdamW(model.parameters(), lr=hyperparameters.learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=True, weight_decay=hyperparameters.weight_decay)
-warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimiser, start_factor=0.01, total_iters=hyperparameters.max_steps)
-cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, hyperparameters.max_steps - hyperparameters.warmup_steps, hyperparameters.min_learning_rate)
-learning_rate_scheduler = torch.optim.lr_scheduler.SequentialLR(optimiser, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[hyperparameters.warmup_steps])
-
-# Trainer initialisation
-trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
-                  hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
-                  train_dataloader, evaluation_dataloader, tokeniser=tokeniser,
-                  torch_compile=False,
-                  train=False, evaluate=True, sample=True,
-                  save=False, save_path=save_path,
-                  wandb_logging=True)
-trainer.start()
+    # Trainer initialisation
+    trainer = Trainer(model, optimiser, learning_rate_scheduler, device, 
+                    hyperparameters.max_steps, hyperparameters.gradient_accumulation_steps, 
+                    train_dataloader, evaluation_dataloader, tokeniser=tokeniser,
+                    torch_compile=False,
+                    train=False, evaluate=True, sample=True,
+                    save=False, save_path=save_path,
+                    wandb_logging=True)
+    trainer.start()

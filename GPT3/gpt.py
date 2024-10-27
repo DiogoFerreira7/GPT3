@@ -34,7 +34,7 @@ class GPT3(nn.Module):
             wpe = nn.Embedding(config.block_size, config.number_of_embeddings),
             # Hidden Layer - ModuleList just like module dict allows us to index but using integers instead of keys / strings
             h = nn.ModuleList([Block(config) for _ in range(config.number_of_layers)]),
-            # Final LayerNorm
+            # Layer Normalisation Layer
             ln_f = nn.LayerNorm(config.number_of_embeddings),
         ))
 
@@ -251,7 +251,7 @@ class CausalSelfAttention(nn.Module):
         
         # We are making the number of Heads into a batch dimension - it will apply operations on all in parallel
         # so that pytorch treats Heads as batches in parallel
-        # Keys and querys
+        # Keys and querys - conceptually each key will be asking a specific question and mapping that vector in that dimension for example and then the key be the matching value
         # make sure that the number of heads * head size = to the number of channels/embeddings - nh*hs=C=768 channels in the Transformer
         key = key.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
         query = query.view(batch_size, token_size, self.number_of_heads, channel_size // self.number_of_heads).transpose(1, 2) # (B, nh, T, hs)
@@ -268,10 +268,11 @@ class CausalSelfAttention(nn.Module):
 
         # Masked attention to prevent attending to future
         # # matrix multiply queries and keys and transpose the last two dimensions (the non batch dimensions)
+        # If we start with a matrix size k with mean 0 and std 1 then the variance of each is 1 too. The variance will change by 1 * dimension of matrix and std is the root of that.
         # y = (q @ k).transpose((-2, -1)) * (1.0 / sqrt(k.size(-1)))
         # # This is an autoregressive mask that prevents the values in the past from seeing into the future
         # y = y.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
-        # # The softmax would normalise it so that all inf values go to 0 probability and get ignored
+        # # The softmax would normalise it so that all inf values go to 0 probability and can be thought of as an attention score
         # y = F.softmax(y, dim=1)
         # y = y @ v
 
