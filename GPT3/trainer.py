@@ -148,6 +148,8 @@ class Trainer():
                     print("\nSampling")
                     self.sampling()
 
+            # Could add callbacks here for custom metrics or visualising parameter statistics of each layer to make sure training is stable
+
         if self.save:
             self.save_model()
         

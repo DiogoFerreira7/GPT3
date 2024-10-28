@@ -124,5 +124,5 @@ if __name__ == "__main__":
     second_tokeniser = Tokeniser()
     second_tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")
     encoding = second_tokeniser.encode("Hello, this is a test to make sure that the tokeniser is working correctly! <|endoftext|>")
-    # print(encoding)
-    # print(second_tokeniser.decode(encoding))
+    print(encoding)
+    print(second_tokeniser.decode(encoding))

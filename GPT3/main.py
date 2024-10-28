@@ -76,7 +76,6 @@ if __name__ == "__main__":
     # print(model.get_number_of_parameters())
     model.to(device)
 
-
     # Dataloader & Tokeniser initialisation
     # tokeniser = Tokeniser()
     # tokeniser.load("Tokeniser Vocabulary/shakespeare_tokeniser.tokeniser")

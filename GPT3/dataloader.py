@@ -4,7 +4,7 @@ import torch
 
 # Creating our dataloader to get batches
 class Dataloader:
-    def __init__(self, batch_size, token_size, split, tokeniser, num_streamed_examples=100):
+    def __init__(self, batch_size, token_size, split, tokeniser, num_streamed_examples=10):
         self.tokeniser = tokeniser
         self.batch_size = batch_size
         self.token_size = token_size
@@ -25,7 +25,7 @@ class Dataloader:
     def load_tokens(self):
         tokens = [self.tokeniser._special_tokens['<|endoftext|>']]
 
-        # Create a streamable iterator of the dataset¬
+        # Create a streamable iterator of the dataset
         data = iter(self.my_iterable_dataset.take(self.num_streamed_examples))
         for _ in range(self.num_streamed_examples):
             example = next(data)
